@@ -1,0 +1,15 @@
+Summary:
+This paper uses confidence as a metric to adaptively determine when to rely on external knowledge and when to trust the model's parametric knowledge. The authors propose two pipelines: Self-Guided Confidence Reasoning (SCR) and Rule-Based Confidence Reasoning (RCR). Their findings suggest promising avenues for enhancing situated faithfulness in LLMs.
+
+Strengths:
+1. The presentation is clear, and the analysis is comprehensive. The authors conduct an in-depth examination of the situated faithfulness problem, covering a variety of QA benchmarks and models, including both closed-source models like GPT-4o and open-source models like LLaMA-3-8B. In addition to training-free methods, the authors also introduce a training-based approach, CR-DPO. 
+2. The authors address a significant problem: knowledge conflict, which is drawing increasing attention as large language models (LLMs) demonstrate greater capabilities. As LLMs evolve, effectively managing conflicting information between internal and external knowledge sources becomes increasingly critical.
+3. The performance is satisfactory. Experiments on various benchmarks show both SCR and RCR has good performance compared with the baselines.
+
+Weaknesses:
+1. Limited Evaluation of baselines: While SCR and RCR are the primary contributions, the paper could benefit from a more extensive comparison to existing methods in RAG like Active RAG using confidence as a metric to adaptively decide when to use the external information. This omission impacts the novelty of the work.
+2. Sensitivity to Confidence Thresholds: The effectiveness of some RCR methods hinges on predefined confidence thresholds, but the paper lacks a thorough analysis of threshold sensitivity across diverse tasks.
+[1]. Active Retrieval Augmented Generation, Jiang et al. 2024
+
+Questions:
+Refer to the weakness.

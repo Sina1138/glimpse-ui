@@ -1,0 +1,20 @@
+Summary:
+This paper demonstrates that current Large Language Models (LLMs) can distinguish past events from future ones. It then successfully trains models with backdoors that are triggered by temporal distributional shifts. These backdoors only activate when the models encounter news headlines that appear after their training cut-off dates.
+
+Strengths:
+1. This paper explores the ability of LLMs to distinguish between past and future events.
+
+2. The presentation is clear, and the experiments are comprehensive. The details are clear.
+
+Weaknesses:
+The manuscript contains numerous citation and formatting errors. Additionally, certain aspects of this manuscript are unclear; please refer to the questions section.
+
+Questions:
+1.	The definition of the abbreviation LLMs is redundantly mentioned in the abstract.
+2.	On pages 6 and 7 of the manuscript, there are erroneous references to Table, which the author needs to check. 
+3.	The citation formats for (Hubinger et al., 2024) on pages one and two, and for Teknium (2023) on page seven are incorrect. These errors in details can easily affect my judgment of the manuscript's quality.
+4.	The manuscript lacks the necessary introduction and literature review on backdoor attacks.
+5.	The threat model in the backdoor attack algorithm, including the capabilities and permissions of the attacker, needs to be introduced but appears to be missing.
+6.	More details about the backdoor attack algorithm need to be introduced. For instance, what is the target output in the CoT version? This information is crucial for the reproducibility of the algorithm.
+7.	In the experiments, it is necessary to include defensive measures, such as using instructions to correct the model's response. 
+Zhang R, Li H, Wen R, et al. Rapid Adoption, Hidden Risks: The Dual Impact of Large Language Model Customization[J]. arXiv preprint arXiv:2402.09179, 2024.

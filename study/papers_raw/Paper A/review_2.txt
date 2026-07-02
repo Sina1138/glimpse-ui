@@ -1,0 +1,14 @@
+Summary:
+This paper proposes that the internal representations of LLMs' responses are predictive of error patterns. Unlike previous approaches focusing on representations of last token or averaged representations, this paper focuses on representations of exact answer tokens.
+
+Strengths:
+- This paper interprets halluciantions from the perspective of token representations, particularly the exact answer tokens, which provides a relatively new perspective.
+- This work demonstrates that the internal representations of LLMs' responses are skill specific rather than universal.
+- The paper is well-structured and the experiments are comprehensive to demonstrate the validity of the findings.
+
+Weaknesses:
+This paper has generated some interesting findings. However, the method is hardly to be taken as general.
+
+Questions:
+- This approach could be only applicable to QA tasks. For open-ended questions, can it be applied? It would be better to provide performance on these kinds of tasks as well.
+- The results in table 1 show that the AUC of last generated almost match that of exact answer tokens with TriviaQA. Does this imply that actually the representations of last token and answer exact token are almost the same, especially for more general hallucinations rather than specific factual ones such as math problems? Besides, the result of Mistral is worse than that of LLaMA 3.1. Is it because the answer of Mistral involves less explanations to the question than that of LLaMA 3.1? The results in table 2 seems also demonstrate that answer exact tokens are barely better than last tokens when it comes to more generic tasks?

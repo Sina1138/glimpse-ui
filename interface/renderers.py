@@ -259,13 +259,26 @@ def render_review_html(
         sent_id = make_sentence_id(sent)
         escaped = _html.escape(sent)
 
+        # Log clicks on highlighted spans only (feeds num_highlight_interactions)
+        log_attrs = ""
+        if bg:
+            payload = {"mode": mode, "sent": sent_id}
+            if label_text:
+                payload["label"] = label_text
+            elif mode == "polarity":
+                payload["label"] = str(metadata.get("polarity", ""))
+            log_attrs = (
+                ' data-log-event="highlight_click"'
+                f' data-log-payload="{_html.escape(json.dumps(payload), quote=True)}"'
+            )
+
         if label_text:
             parts.append(
-                f'<span id="{sent_id}" style="{style}" title="{_html.escape(label_text)}">'
+                f'<span id="{sent_id}" style="{style}"{log_attrs} title="{_html.escape(label_text)}">'
                 f'{escaped} </span>'
             )
         else:
-            parts.append(f'<span id="{sent_id}" style="{style}">{escaped} </span>')
+            parts.append(f'<span id="{sent_id}" style="{style}"{log_attrs}>{escaped} </span>')
 
     parts.append('</div>')
     content = "".join(parts)
@@ -719,8 +732,14 @@ def render_agreement_html(
             "t.style.top=(r.top-t.offsetHeight-6)+'px';"
         )
         leave_js = "this.querySelector('.rsa-tooltip').style.display='none';"
+        _agr_payload = json.dumps(
+            {"mode": "agreement", "sent": sent_id,
+             "label": "unique" if score > 0 else "common"}
+        )
         parts.append(
             f'<span id="{sent_id}" class="rsa-sentence" style="background:{bg_color};" '
+            f'data-log-event="highlight_click" '
+            f'data-log-payload="{_html.escape(_agr_payload, quote=True)}" '
             f'onmouseenter="{hover_js}" onmouseleave="{leave_js}">'
             f'{_html.escape(sent)} '
             f'<span class="rsa-tooltip">{_html.escape(tooltip_text)}</span>'

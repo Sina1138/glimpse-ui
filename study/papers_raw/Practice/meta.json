@@ -1,0 +1,9 @@
+{
+  "forum_url": "https://openreview.net/forum?id=K2jOacHUlO",
+  "paper_title": "To Trust or Not to Trust? Enhancing Large Language Models' Situated Faithfulness to External Contexts",
+  "iclr_year": 2025,
+  "openreview_id": "K2jOacHUlO",
+  "decision": "Accept",
+  "source": "HF mirror smallari/openreview-iclr2025-peer-reviews-RAW, verified vs live OpenReview 2026-07-02",
+  "note": "Review order matches reference_draft_* files (R1..Rn). Re-verify against frozen reference before pilot."
+}

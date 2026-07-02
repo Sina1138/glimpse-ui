@@ -1,0 +1,22 @@
+Summary:
+This paper conducts extensive experiments and verifies through probing that LLMs possess an implicit understanding of truthfulness within their hidden representations. However, due to certain calibration issues, even though the model "knows" the truth, it can still produce incorrect outputs. Additionally, further experiments show that probing is not a general-purpose tool for detecting hallucinations; it is task-specific.
+
+Strengths:
+- Originality: The understanding of hallucination is accurate, and the exploration of the model’s self-knowledge capabilities provides deeper insights. Perspective of shifting focus from human-centric to model-centric is pinpoint and insightful.
+- Quality: The experiments are thorough and well-executed.
+- Clarity: The paper is structured clearly, making it easy to follow.
+- Significance: This work is valuable for future research, especially for studies focusing on how models internally grasp factuality.
+
+Weaknesses:
+- **On the definition of hallucination**: The paper's definition of hallucination remains somewhat vague. As discussed in [this paper](https://arxiv.org/abs/2407.14507), hallucination can be understood as *inconsistency* between a model’s expression and world knowledge it has learned from its training corpus.
+
+- **Missing experiments**: On p.6, the paper states that “the primary conclusion is that information about truthfulness is highly localized in specific generated tokens.” Given this claim, I believe an additional experiment is necessary: measuring the accuracy of the model when prompted to produce exact answers under restricted conditions. This would provide more direct evidence supporting the localization of truthfulness in generated tokens.
+
+- **Lack of clear direction for next steps**: The paper does not explicitly outline what future steps can be taken. If we now accept that "the model latently and task-specifically knows what truthfulness is," how can we leverage this finding to help a general-purpose LLM handle unpredictable tasks? Or, how can this work help researches avoid futile efforts? The practical applications of these insights are not clearly addressed.
+
+Questions:
+- **On p.3, Section 3.1**: Which model, $M$, did you use to generate responses when constructing the triplet dataset?
+- **On p.5**: What is the accuracy of Mistral-7b-Instruct when extracting the exact answer token? Or did you assume that all extracted tokens are correct without further validation?
+- **On p.5, fig. 2**: The statement “Middle to later layers typically yield the most effective probing results” seems inaccurate. The figure does not show a clear pattern supporting this claim.
+- **On p.8**: Why were the error patterns not designed to be orthogonal? Could you provide a definitive reason for this decision?
+- **On p.10, fig.5**: What do the different colored bars represent in the figure? Please clarify the meaning of the different colors.

@@ -1,0 +1,29 @@
+Summary:
+This paper examines the internal representations of large language models (LLMs) to understand how they encode truthfulness and produce hallucinations—errors such as factual inaccuracies and reasoning failures. Through an approach involving probing classifiers, the authors identify truthfulness signals in specific tokens, particularly in exact answer tokens. Experiments across multiple LLMs reveal that truthfulness is task-specific, with signals varying by the nature of the task. Additionally, the study develops a taxonomy of error types, finding that LLMs may encode the correct answer internally while producing an incorrect one externally, suggesting areas where error mitigation could be applied.
+
+Strengths:
+- By probing specific tokens associated with “correct” answers, the authors highlight underexplored dimensions of LLM truthfulness encoding. This approach captures nuanced error signals that extend beyond surface-level accuracy. 
+
+- The paper demonstrates robustness by testing the approach on a variety of LLM architectures (e.g., Mistral-7b, Llama3-8b). This extensive model comparison strengthens the study’s findings by showing consistency in truthfulness encoding patterns across different architectures. 
+
+- The detailed taxonomy of error types, including categories like “two competing answers” and “consistent incorrectness,” could help model developers diagnose and prioritize error types during model fine-tuning. 
+
+- The study’s finding that truthfulness encoding is not universal but rather task-specific introduces an important consideration for cross-task applications.
+
+Weaknesses:
+- While probing classifiers show strong results, the interpretability of their outputs remains unclear. For example, understanding how specific probing layer choices affect error predictions or how developers might interpret these signals is crucial for practical adoption but is not fully addressed. Including examples of how different layers and token choices impact classifier predictions would clarify the interpretability of this approach. A case study showing how interpretability of classifier outputs could inform model improvements would also be beneficial. 
+
+- The error taxonomy could be more robust if supported by quantitative analyses on how consistently each error type appears across varying prompts or domains. Currently, it is unclear if the identified error types remain stable under different experimental conditions or across datasets. Conducting further experiments to determine if error types remain consistent under prompt variation or across domains (e.g., factual vs. commonsense tasks) could enhance the reliability of the taxonomy. These results would provide stronger support for the taxonomy as a practical tool. 
+
+- The framework’s token-level focus may overlook broader context, potentially missing how errors manifest within larger segments of generated text. For tasks like long-form QA or summarization, this might limit the approach’s utility by not capturing interactions between tokens. Testing whether incorporating context windows around answer tokens, or analyzing sentences rather than isolated tokens, would improve accuracy could make the approach more adaptable to contextually rich tasks. Including examples where broader context improves error prediction would also strengthen this aspect. 
+
+- Practical guidance on integrating these insights into model development workflows is limited. Developers may find it challenging to apply these techniques without clear implementation guidelines.
+
+Questions:
+1. Have the authors tested if the taxonomy of error types is consistent across various domains or tasks, and if not, would this be feasible in future work? 
+
+2. Could the authors explain why certain model layers are more effective for probing in error detection? A discussion on this might enhance understanding of how internal representations encode truthfulness.
+
+3. Have the authors considered using a context window around answer tokens to improve detection accuracy, especially for tasks that involve longer responses or require more context? 
+
+4. Given the diversity in model architectures tested, are there certain architectures where the probing method performs noticeably better or worse?

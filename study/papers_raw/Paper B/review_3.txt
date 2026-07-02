@@ -1,0 +1,30 @@
+Summary:
+This paper examines the ability of LLMs to differentiate between past and future events, introducing a new type of backdoor vulnerability. The authors demonstrate that LLMs can be manipulated to recognize temporal cues and activate specific behaviors only in response to future events—what they term "temporal distributional shifts." Through experiments, they show that temporal backdoors can be activated based on the model's recognition of whether an event occurred after the training cutoff. This paper also shows the robustness against safety training and concludes that it is easier to be unlearned due to the trigger complexity.
+
+Strengths:
+- Originality
+
+This paper introduces an innovative concept by exploring backdoors triggered by temporal distributional shifts in LLMs, where future events act as hidden triggers. Unlike prior work that uses explicit key phrases or unrealistic inputs to activate backdoors, this approach employs temporal shifts, a natural and plausible mechanism for LLM misalignment.
+
+- Quality
+
+The study is executed with well-defined experimental setups, methodologies, and evaluation metrics (i.e. using Precision, Accuracy, Recall in stead of ASR). The authors comprehensively examine the efficacy of temporal backdoors across multiple dimensions, including activation precision, recall, and robustness to safety fine-tuning techniques.
+
+This paper also makes a strong case for the applicability of standard safety techniques, such as fine-tuning with HHH datasets, and evaluate the effectiveness of steering vectors in mitigating these backdoors.
+
+- Clarity
+
+The paper is generally well-organized and clear in its exposition. Technical terms, methodologies, and metrics are carefully introduced.
+
+- Significance
+
+The significance of this work is substantial within the realm of AI safety and model alignment. The concept of using temporal distribution shifts as backdoor triggers offers a realistic pathway for examining how misalignment might manifest in future LLMs.
+
+Weaknesses:
+- Wrong table reference in line 312 and line 373.
+- The affect of the backdoor on model's general utility is not explored.
+
+Questions:
+- Does this paper indicate that models has the ability to tell hallucinations (factual errors, which can be equivalent to the ''future event'' by the definition of this paper) from true statements? Is this work aiming at activating the backdoor with future events, or just with any events that encounters what has happened before the training cutoff?
+
+- Does the backdoor training affect model utility?

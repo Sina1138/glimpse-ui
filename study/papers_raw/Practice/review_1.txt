@@ -1,0 +1,18 @@
+Summary:
+The authors propose multiple approaches for making large language models selectively reliant on either the context, or their parametric knowledge -- a framing termed situational faithfulness, where depending on the models' assessment of the truthfulness of context, it decides to use factual information presented therein, or alternatively, factual information encoded in the parameters.
+
+SCR and RCR, two families of proposed approaches, rely on either soft assessment through different prompting and aggregation approaches, where the model yields the final output (SCR) or rule-based prediction based on the models' estimated confidence (RCR). The authors show that for advanced models (GPT-4o variants) SCR is the better approach, while for smaller models (LLaMA-3-8B), RCR prevails. Both of these families are better compared to baseline approaches across a number of QA tasks.
+The authors also introduce a new QA dataset found "in-the-wild" in RedditQA, where questions and (correct as well as incorrect) answers were automatically generated based on claims flagged as uncertain or incorrect.
+
+Strengths:
+- The problem of balancing trust between contextual and parametric knowledge is important
+- Comprehensive experimental setup and ablation study
+- Well written and easy to understand
+- Proposed methods outperform baselines and improve
+
+Weaknesses:
+- There is no real clear winner in terms of methods - in the case of GPT-4o, implicit and explicit SCR share the laurels between SCR methods, while InternalConf RCR is not far behind.
+- The results are very densely presented and it is not clear what the takeaway is - using CR-DPO is the best approach if one can tune the model, however otherwise the instructions are very dataset dependent.
+
+Questions:
+None

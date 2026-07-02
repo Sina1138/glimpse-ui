@@ -1,0 +1,9 @@
+{
+  "forum_url": "https://openreview.net/forum?id=KRnsX5Em3W",
+  "paper_title": "LLMs Know More Than They Show: On the Intrinsic Representation of LLM Hallucinations",
+  "iclr_year": 2025,
+  "openreview_id": "KRnsX5Em3W",
+  "decision": "Accept",
+  "source": "HF mirror smallari/openreview-iclr2025-peer-reviews-RAW, verified vs live OpenReview 2026-07-02",
+  "note": "Review order matches reference_draft_* files (R1..Rn). Re-verify against frozen reference before pilot."
+}

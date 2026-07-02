@@ -21,6 +21,7 @@ class InteractionLogger:
         self._enabled = config.logging_enabled
         self._condition = config.condition
         self._session_id = str(uuid.uuid4())
+        self._participant_id = ""
         self._lock = threading.Lock()
         self._file = None
 
@@ -39,6 +40,10 @@ class InteractionLogger:
     def session_id(self) -> str:
         return self._session_id
 
+    def set_participant(self, participant_id: str) -> None:
+        """Set the participant ID (e.g. P01) included in every subsequent record."""
+        self._participant_id = (participant_id or "").strip()
+
     def log(
         self,
         event_type: str,
@@ -55,6 +60,7 @@ class InteractionLogger:
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "session_id": self._session_id,
+            "participant_id": self._participant_id,
             "condition": self._condition,
             "tab": tab,
             "event_type": event_type,

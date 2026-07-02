@@ -1,0 +1,18 @@
+Summary:
+This paper discusses the ability of training language models to behave differently depending on whether model inputs relate temporally to before or after the model's cut-off date. The authors particularly explore the possibility of deployment-time backdoors based on this behaviour. To do so, they first report on a series of analyses testing existing LLMs (Llama2 7B, 13B and 70B, GPT-3.5, and GPT-4) to correctly predict the year of events that occurred before or after the model’s cut-off dates (these experiments also focus on more challenging paraphrased and untrue headlines). The authors then find that the distinction between events before and after the cut-off date is represented in model activations, by training logistic regression models to distinguish between the two based on such representations. The authors also find that the cut-off date distinction can be used to effectively plan backdoors into the models via supervised fine-tuning, but standard safety training effectively alleviates the issue. Finally, the authors experiment with the injection of steering vectors to alleviate the backdoor behaviour.
+
+Strengths:
+* The topic and approach discussed in this paper are very interesting. The analysis is thorough and the results are intriguing. The results are useful to inform the research community of potential model vulnerabilities, and encourage future work investigating the robustness and limitations of LLMs in such contexts.
+* The paper is well-written and the experiments are clearly presented and extensive.
+* I appreciate the limitations mentioned by the authors in the conclusion as well as the clear directives for future work.
+* I overall enjoyed reading this paper!
+
+Weaknesses:
+* There are a few clarification questions that I mention below. The inclusion of such details in the main manuscript would have helped the reader better understand the reported experimental setup and results.
+* The paper’s presentation could be improved. There are occurrences of incorrectly referenced Tables (“??”), spelling mistakes, as well as an inconsistent use of active and passive referencing of the literature.
+
+Questions:
+* Can you clarify what is meant by “completions versions of GPT-3.5 and GPT-4”?
+* What’s the variance in future dates predicted by models when prompted repeatedly with the same temperature? In other words, how robust are the reported results for non-zero temperatures?
+* For the headline experiment, did you validate whether the predictions of “unsure” by LLMs ware reasonable? Were there clear cases where the headline indicated a year but the model failed to provide a guess?
+* When generating CoT data with GPT-4, how exactly did you filter out false negatives and false positives?

@@ -104,12 +104,10 @@ def _load_paper_titles() -> dict:
     return titles
 
 
-# Load dataset once at module level
+# Load demo dataset once at module level. Study builds override this in
+# build_review_app via config.data_csv, so an empty demo dataset is only an
+# error once the config is resolved (checked in build_review_app).
 _years_new, _df_new = load_scored_reviews_with_rebuttals()
-if _df_new.empty:
-    raise FileNotFoundError(
-        "No preprocessed dataset found. Run the pipeline first (./pipeline/process_new_data.sh)."
-    )
 years, all_scored_reviews_df = _years_new, _df_new
 _paper_titles = _load_paper_titles()
 
@@ -161,6 +159,18 @@ def _gpu_predict_polarity_topic(sentences: List[str]) -> Tuple[Dict, Dict]:
     polarity_map = processor.predict_polarity(sentences)
     topic_map = processor.predict_topic(sentences)
     return polarity_map, topic_map
+
+
+# Full-screen session gate for study builds: moderator enters the participant
+# ID and starts/ends tasks. Overlay CSS keeps the underlying review UI intact
+# (no re-layout) while making it unreachable until a task is started.
+_STUDY_GATE_CSS = """
+#study-gate {position:fixed; inset:0; background:#f3f4f6; z-index:1000; overflow:auto; padding:6vh 16px;}
+#study-gate .study-gate-inner {max-width:540px; margin:0 auto; background:white;
+    border:1px solid #e5e7eb; border-radius:12px; padding:28px !important;}
+#study-end-row {background:#fffbeb; border:1px solid #fde68a; border-radius:8px;
+    padding:6px 12px; margin-bottom:8px; align-items:center;}
+"""
 
 
 def _render_ac_guide_link(ac_guide_url: str) -> str:
@@ -253,7 +263,24 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
     Returns a gr.Blocks instance ready to .launch().
     """
     highlights = config.highlights_enabled
+    study_mode = getattr(config, "study_mode", False)
     logger = InteractionLogger(config)
+
+    # --- Dataset resolution (study builds read from a separate location) ---
+    global years, all_scored_reviews_df
+    data_csv = getattr(config, "data_csv", None)
+    if data_csv is not None:
+        _y_override, _df_override = load_scored_reviews_with_rebuttals(Path(data_csv))
+        if _df_override.empty:
+            raise FileNotFoundError(
+                f"Study dataset not found or empty: {data_csv}\n"
+                "Run: python pipeline/preprocess_study_papers.py"
+            )
+        years, all_scored_reviews_df = _y_override, _df_override
+    if all_scored_reviews_df.empty:
+        raise FileNotFoundError(
+            "No preprocessed dataset found. Run the pipeline first (./pipeline/process_new_data.sh)."
+        )
 
     # --- Theme (force light-mode colors in dark mode) ---
     _theme = gr.themes.Default()
@@ -329,7 +356,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
     with gr.Blocks(
         title="ReView",
-        css=CUSTOM_CSS,
+        css=CUSTOM_CSS + (_STUDY_GATE_CSS if study_mode else ""),
         theme=_theme,
         js=app_js,
     ) as demo:
@@ -339,9 +366,26 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
             js_event_sink = gr.Textbox(visible=False, elem_id="js-event-sink")
 
         # ==============================================================
+        # STUDY SESSION GATE (study builds only)
+        # ==============================================================
+        if study_mode:
+            with gr.Column(elem_id="study-gate", visible=True) as study_gate:
+                with gr.Column(elem_classes=["study-gate-inner"]):
+                    gr.Markdown("## ReView Study — Session Control")
+                    _cond_label = "ReView (with highlights)" if highlights else "Baseline (no highlights)"
+                    gr.Markdown(f"**Condition:** {_cond_label} &nbsp;·&nbsp; *moderator use only*")
+                    gate_pid = gr.Textbox(label="Participant ID", placeholder="e.g., P01", max_lines=1)
+                    gate_task = gr.Radio(choices=list(years), label="Task / Submission")
+                    gate_start_btn = gr.Button("Start Task", variant="primary")
+                    gate_status = gr.HTML("", visible=False)
+            with gr.Row(visible=False, elem_id="study-end-row") as study_end_row:
+                study_task_label = gr.Markdown("")
+                study_end_btn = gr.Button("End Task", variant="stop", scale=0)
+
+        # ==============================================================
         # PRE-PROCESSED TAB
         # ==============================================================
-        with gr.Tab("Pre-processed Reviews", elem_classes=["results-compact"]):
+        with gr.Tab("Reviews" if study_mode else "Pre-processed Reviews", elem_classes=["results-compact"]):
             if not years:
                 raise ValueError("No years available in new dataset")
             initial_year = years[0]
@@ -391,7 +435,13 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 paper_summary_html = _render_preprocessed_summary(
                     current_id, paper_title, current_index, len(state["review_ids"])
                 )
-                prep_ac_guide_url = f"https://iclr.cc/Conferences/{state['year_choice']}/ACGuide"
+                # AC guide year: prefer per-submission metadata (study datasets
+                # key rows by task label, not year), fall back to the row key.
+                _guide_year = state["year_choice"]
+                _meta_for_guide = state.get("metadata_for_year", {}).get(current_id, {})
+                if isinstance(_meta_for_guide, dict) and _meta_for_guide.get("iclr_year"):
+                    _guide_year = _meta_for_guide["iclr_year"]
+                prep_ac_guide_url = f"https://iclr.cc/Conferences/{_guide_year}/ACGuide"
                 prep_ac_guide_html = _render_ac_guide_link(prep_ac_guide_url)
 
                 number_of_displayed_reviews = len(current_review)
@@ -581,13 +631,16 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
             with gr.Row(elem_classes=["prep-header-row"]):
                 with gr.Column(scale=1, elem_classes=["prep-left-column"]):
                     review_id = gr.HTML(value=init_display[0], container=False, padding=False)
-                    with gr.Row():
+                    # Study mode: one submission per task — no paper navigation.
+                    with gr.Row(visible=not study_mode):
                         previous_button = gr.Button("Previous", variant="secondary", interactive=True)
                         next_button = gr.Button("Next", variant="primary", interactive=True)
                     prep_ac_guide = gr.HTML(value=init_display[1], container=False, padding=False)
 
                 with gr.Column(scale=1, elem_classes=["prep-right-column"]):
-                    year = gr.Dropdown(choices=years, label="Select Year", interactive=True, value=initial_year)
+                    # Study mode: task selection happens on the session gate, not here.
+                    year = gr.Dropdown(choices=years, label="Select Year", interactive=True,
+                                       value=initial_year, visible=not study_mode)
                     if highlights:
                         score_type = gr.Radio(
                             choices=["No Highlighting", "Polarity", "Topic", "Agreement"],
@@ -669,10 +722,70 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
             next_button.click(fn=next_review, inputs=[state, score_type], outputs=_review_outputs)
             previous_button.click(fn=previous_review, inputs=[state, score_type], outputs=_review_outputs)
 
+            # --- Study session gate wiring (study builds only) ---
+            if study_mode:
+                def _study_start(pid, task, st, st_type):
+                    pid = (pid or "").strip()
+                    if not pid or not task:
+                        msg = render_status(
+                            "Enter a participant ID and select a task before starting.", "warning")
+                        return (
+                            *[gr.update() for _ in range(len(_review_outputs) - 1)], st,
+                            gr.update(visible=True),           # study_gate stays
+                            gr.update(visible=False),          # study_end_row
+                            gr.update(),                       # study_task_label
+                            gr.update(visible=True, value=msg),  # gate_status
+                        )
+                    logger.set_participant(pid)
+                    st["year_choice"] = task
+                    st["scored_reviews_for_year"] = get_preprocessed_scores(task)
+                    st["metadata_for_year"] = get_preprocessed_metadata(task)
+                    st["review_ids"] = list(st["scored_reviews_for_year"].keys())
+                    st["current_review_index"] = 0
+                    st["current_review"] = st["scored_reviews_for_year"][st["review_ids"][0]]
+                    logger.log("task_start", tab="pre", source="moderator",
+                               paper_id=st["review_ids"][0],
+                               payload={"task": task, "participant_id": pid})
+                    disp = update_review_display(st, st_type)
+                    return (
+                        *disp,
+                        gr.update(visible=False),  # study_gate
+                        gr.update(visible=True),   # study_end_row
+                        gr.update(value=f"**{pid}** &nbsp;·&nbsp; {task}"),
+                        gr.update(visible=False, value=""),
+                    )
+
+                gate_start_btn.click(
+                    fn=_study_start,
+                    inputs=[gate_pid, gate_task, state, score_type],
+                    outputs=[*_review_outputs, study_gate, study_end_row, study_task_label, gate_status],
+                )
+
+                def _study_end(st):
+                    current_paper = ""
+                    if st.get("review_ids"):
+                        current_paper = st["review_ids"][st.get("current_review_index", 0)]
+                    logger.log("task_end", tab="pre", source="moderator",
+                               paper_id=current_paper,
+                               payload={"task": st.get("year_choice", "")})
+                    return (
+                        gr.update(visible=True),            # study_gate back
+                        gr.update(visible=False),           # study_end_row
+                        gr.update(value=""),                # study_task_label
+                        gr.update(visible=False, value=""), # gate_status
+                        gr.update(value=None),              # gate_task reset
+                    )
+
+                study_end_btn.click(
+                    fn=_study_end,
+                    inputs=[state],
+                    outputs=[study_gate, study_end_row, study_task_label, gate_status, gate_task],
+                )
+
         # ==============================================================
         # INTERACTIVE TAB
         # ==============================================================
-        with gr.Tab("Interactive", interactive=True):
+        with gr.Tab("Interactive", interactive=True, visible=not study_mode):
 
             # ---- TOP TOGGLE BAR (always visible) ----
             with gr.Row():
@@ -875,6 +988,10 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
                     title_text = title.strip() if title and title.strip() else ""
                     ac_guide_html = _render_ac_guide_link(ac_guide_url)
+
+                    logger.log("view_results", tab="int", source="system",
+                               paper_id=title_text,
+                               payload={"active_reviews": active_count})
 
                     # Start polarity+topic in background thread
                     active_texts = [t for t in texts if t and t.strip()]

@@ -1,0 +1,16 @@
+Summary:
+This work addresses the challenge of dealing with unreliable external contexts fed into LLMs. It introduces the concept of “situated faithfulness” suggesting that LLMs should evaluate whether to trust the external context or disregard it, answering the user’s question based solely on their parametric knowledge. To tackle this issue, two approaches are designed: Self-Guided Confidence Reasoning (SCR) and Rule-Based Confidence Reasoning (RCR). SCR prompts the LLM to assess the external context itself, while RCR uses predefined rules to determine the trustworthiness of the external context. The authors also propose a training method to enhance SCR, Confidence Reasoning Direct Preference Optimization (CR-DPO).
+Experimental results validate the effectiveness of these methods, revealing several interesting findings.
+
+Strengths:
+- Situated faithfulness is a worth-investigating research problem, as knowledge conflict could occur in practical usage.
+- The designed task RedditQA is a valuable resource for the community interested in this area. It would be beneficial if the author could open-source this dataset.
+- The proposed methods are effective based on the conducted experiments.
+
+Weaknesses:
+- Both SCR and RCR introduce additional computational overhead and increase latency.
+
+Questions:
+- The authors apply multiple ways/prompts to estimate the confidence of the answers/context. I’m curious how calibrated these confidence scores are? Can you report the calibration metrics (AUROC, ECE) for these scores as well?
+- Typos:
+Line 022: self-access -> self-assess
