@@ -332,7 +332,7 @@ class InteractiveReviewProcessor:
         }
 
 
-def fetch_reviews_from_openreview_link(link: str) -> Tuple[List[str], str]:
+def fetch_reviews_from_openreview_link(link: str) -> Tuple[List[str], str, str, str]:
     """
     Fetch reviews from an OpenReview link.
 
@@ -340,7 +340,7 @@ def fetch_reviews_from_openreview_link(link: str) -> Tuple[List[str], str]:
         link: OpenReview forum link (e.g., https://openreview.net/forum?id=XXX)
 
     Returns:
-        Tuple of (list of review texts, paper title)
+        Tuple of (list of review texts, paper title, rebuttal JSON, AC guide URL)
 
     Raises:
         ValueError: If link is invalid or no OpenReview access
@@ -387,8 +387,18 @@ def fetch_reviews_from_openreview_link(link: str) -> Tuple[List[str], str]:
             result.extend(invs)
         return result
 
+    def _infer_iclr_ac_guide_url(notes):
+        """Infer the ICLR AC guide URL from OpenReview invitation paths."""
+        for note in notes:
+            for invitation in _get_invitations(note):
+                match = re.search(r'\bICLR\.cc/(\d{4})/Conference\b', invitation)
+                if match:
+                    year = match.group(1)
+                    return f"https://iclr.cc/Conferences/{year}/ACGuide"
+        return ""
+
     def _fetch_with_client(client, forum_id):
-        """Fetch and parse notes using a given openreview client. Returns (reviews, title, rebuttal_json)."""
+        """Fetch and parse notes using a client. Returns (reviews, title, rebuttal_json, ac_guide_url)."""
         try:
             # v2 clients have get_all_notes; v1 has get_notes
             if hasattr(client, 'get_all_notes'):
@@ -404,6 +414,9 @@ def fetch_reviews_from_openreview_link(link: str) -> Tuple[List[str], str]:
             return None
 
         print(f"[FETCH]   Got {len(forum_notes)} notes")
+        ac_guide_url = _infer_iclr_ac_guide_url(forum_notes)
+        if ac_guide_url:
+            print(f"[FETCH]   ICLR AC guide inferred: {ac_guide_url}")
 
         # Extract title from submission note
         title = ""
@@ -474,7 +487,7 @@ def fetch_reviews_from_openreview_link(link: str) -> Tuple[List[str], str]:
 
         rebuttal_text = json.dumps(rebuttals_structured) if rebuttals_structured else ""
         print(f"[FETCH]   {len(rebuttals_structured)} rebuttal(s) found")
-        return reviews, title, rebuttal_text
+        return reviews, title, rebuttal_text, ac_guide_url
 
     _browser_headers = {
         'Origin': 'https://openreview.net',
@@ -515,7 +528,6 @@ def fetch_reviews_from_openreview_link(link: str) -> Tuple[List[str], str]:
             f"Set OPENREVIEW_USERNAME and OPENREVIEW_PASSWORD in your environment and restart the app."
         )
 
-    reviews, title, rebuttal_text = result
+    reviews, title, rebuttal_text, ac_guide_url = result
     print(f"[FETCH] SUCCESS: {len(reviews)} reviews, title: {title[:50]}")
-    return reviews, title, rebuttal_text
-
+    return reviews, title, rebuttal_text, ac_guide_url

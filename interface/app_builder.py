@@ -12,6 +12,7 @@ import threading
 import time
 import uuid
 import json as _json
+import html as _html
 from pathlib import Path
 from typing import Tuple, Dict, List, Optional
 
@@ -166,6 +167,30 @@ def _gpu_predict_polarity_topic(sentences: List[str]) -> Tuple[Dict, Dict]:
 # OpenReview fetching
 # ---------------------------------------------------------------------------
 
+def _render_ac_guide_link(ac_guide_url: str) -> str:
+    """Render a compact external link to the inferred ICLR Area Chair guide."""
+    if not ac_guide_url or not ac_guide_url.strip():
+        return ""
+
+    safe_url = _html.escape(ac_guide_url.strip(), quote=True)
+    parts = ac_guide_url.strip("/").split("/")
+    year = parts[-2] if len(parts) >= 2 and parts[-1] == "ACGuide" else ""
+    payload = {"conference": "ICLR"}
+    if year:
+        payload["year"] = year
+    payload_attr = _html.escape(_json.dumps(payload), quote=True)
+
+    return (
+        f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" '
+        f'data-log-event="ac_guide_click" data-log-payload="{payload_attr}" '
+        'style="display:inline-flex;align-items:center;justify-content:center;'
+        'height:42px;box-sizing:border-box;width:100%;padding:0 14px;'
+        'border:1px solid #d1d5db;border-radius:8px;background:#f9fafb;'
+        'color:#374151;text-decoration:none;font-weight:600;font-size:0.95em;'
+        'white-space:nowrap;">Area Chair Guide</a>'
+    )
+
+
 def fetch_openreview_reviews(link: str):
     """Fetch reviews from OpenReview link and populate the textboxes."""
     print(f"\n[DEMO] fetch_openreview_reviews called with link: {link}")
@@ -175,7 +200,7 @@ def fetch_openreview_reviews(link: str):
 
     try:
         from interface.interactive_processor import fetch_reviews_from_openreview_link
-        reviews, title, rebuttal = fetch_reviews_from_openreview_link(link)
+        reviews, title, rebuttal, ac_guide_url = fetch_reviews_from_openreview_link(link)
         print(f"[DEMO] Got {len(reviews)} reviews from fetch function")
 
         while len(reviews) < MAX_INTERACTIVE_REVIEWS:
@@ -184,7 +209,7 @@ def fetch_openreview_reviews(link: str):
 
         num_reviews = len([r for r in reviews if r.strip()])
         status = render_status(f"Fetched {num_reviews} reviews for: {title}", "success")
-        return (*reviews, title, rebuttal, status)
+        return (*reviews, title, rebuttal, ac_guide_url, status)
 
     except gr.Error:
         raise
@@ -630,9 +655,10 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
             # ---- TOP TOGGLE BAR (always visible) ----
             with gr.Row():
-                paper_title = gr.Textbox("", visible=False, interactive=False, show_label=False, container=False, elem_classes=["paper-title-heading"])
-                back_to_input_btn = gr.Button("✏️ Edit Reviews / New Input", visible=False, variant="secondary")
-                view_results_btn = gr.Button("📊 View Results", visible=False, variant="secondary")
+                paper_title = gr.Textbox("", visible=False, interactive=False, show_label=False, container=False, elem_classes=["paper-title-heading"], scale=8)
+                ac_guide_link = gr.HTML("", visible=False, min_width=170, scale=2)
+                back_to_input_btn = gr.Button("✏️ Edit Reviews / New Input", visible=False, variant="secondary", scale=5)
+                view_results_btn = gr.Button("📊 View Results", visible=False, variant="secondary", scale=3)
 
             # ---- INPUT SECTION ----
             with gr.Column(visible=True) as input_section:
@@ -652,6 +678,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                         fetch_reviews_button = gr.Button("Fetch & Process", variant="primary", interactive=True)
                         openreview_title = gr.State("")
                         openreview_rebuttal = gr.State("")
+                        openreview_ac_guide_url = gr.State("")
 
                     with gr.Tab("Paste Reviews Manually"):
                         review1_textbox = gr.Textbox(lines=5, value=EXAMPLES[0], label="📝 Review 1", interactive=True)
@@ -729,6 +756,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
             interactive_rebuttal_state = gr.State("")
             processing_thread_state = gr.State(None)
+            no_ac_guide_state = gr.State("")
 
             _interactive_inputs = [review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox, focus_radio, interactive_rebuttal_state, processing_thread_state]
 
@@ -755,7 +783,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
             _show_raw_outputs = [
                 *none_texts,
-                input_section, results_section, back_to_input_btn, paper_title, view_results_btn, focus_radio,
+                input_section, results_section, back_to_input_btn, paper_title, ac_guide_link, view_results_btn, focus_radio,
                 polarity_progress_html, agreement_progress_html,
                 interactive_rebuttal_toggle,
                 *rebuttal_for_reviews,
@@ -786,7 +814,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
             # --- Show raw reviews and switch to results ---
 
             if highlights:
-                def _show_raw_and_switch(r1, r2, r3, r4, r5, r6, rebuttal, title=""):
+                def _show_raw_and_switch(r1, r2, r3, r4, r5, r6, rebuttal, title="", ac_guide_url=""):
                     """Immediately switch to results with raw tokenized reviews.
                     Kicks off polarity+topic in background thread."""
                     import time as _time
@@ -824,6 +852,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     )
 
                     title_text = title.strip() if title and title.strip() else ""
+                    ac_guide_html = _render_ac_guide_link(ac_guide_url)
 
                     # Start polarity+topic in background thread
                     active_texts = [t for t in texts if t and t.strip()]
@@ -867,6 +896,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                         gr.update(visible=True),                               # results_section
                         gr.update(visible=True),                               # back_to_input_btn
                         gr.update(visible=bool(title_text), value=title_text), # paper_title
+                        gr.update(visible=bool(ac_guide_html), value=ac_guide_html), # ac_guide_link
                         gr.update(visible=False),                              # view_results_btn
                         gr.update(choices=["No Highlighting", "Polarity ⏳", "Topic ⏳", "Agreement ⏳"],
                                    value="No Highlighting", interactive=True), # focus_radio
@@ -883,7 +913,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
             else:
                 # No-highlight: simpler version — no background ML thread
-                def _show_raw_and_switch(r1, r2, r3, r4, r5, r6, rebuttal, title=""):
+                def _show_raw_and_switch(r1, r2, r3, r4, r5, r6, rebuttal, title="", ac_guide_url=""):
                     """Show raw tokenized reviews. No ML processing."""
                     from dependencies.Glimpse_tokenizer import glimpse_tokenizer
                     texts = [r1, r2, r3, r4, r5, r6]
@@ -919,6 +949,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     )
 
                     title_text = title.strip() if title and title.strip() else ""
+                    ac_guide_html = _render_ac_guide_link(ac_guide_url)
 
                     logger.log("view_results", tab="int", source="system",
                                paper_id=title_text,
@@ -930,6 +961,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                         gr.update(visible=True),                               # results_section
                         gr.update(visible=True),                               # back_to_input_btn
                         gr.update(visible=bool(title_text), value=title_text), # paper_title
+                        gr.update(visible=bool(ac_guide_html), value=ac_guide_html), # ac_guide_link
                         gr.update(visible=False),                              # view_results_btn
                         gr.update(value="No Highlighting"),                    # focus_radio (hidden, no change)
                         gr.update(visible=False, value=""),                    # polarity_progress_html
@@ -1206,7 +1238,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     fn=_fetch_with_logging,
                     inputs=[openreview_link_input],
                     outputs=[review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                             openreview_title, openreview_rebuttal, status_html]
+                             openreview_title, openreview_rebuttal, openreview_ac_guide_url, status_html]
                 ).success(
                     fn=lambda r4, r5, r6: (
                         gr.update(visible=bool(r4.strip())),
@@ -1218,7 +1250,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 ).success(
                     fn=_show_raw_and_switch,
                     inputs=[review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                            openreview_rebuttal, openreview_title],
+                            openreview_rebuttal, openreview_title, openreview_ac_guide_url],
                     outputs=_show_raw_outputs
                 ).success(
                     fn=process_interactive_reviews_fast,
@@ -1257,7 +1289,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 ).success(
                     fn=_show_raw_and_switch,
                     inputs=[review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                            paste_rebuttal, no_title_state],
+                            paste_rebuttal, no_title_state, no_ac_guide_state],
                     outputs=_show_raw_outputs
                 ).success(
                     fn=process_interactive_reviews_fast,
@@ -1306,7 +1338,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     fn=_fetch_with_logging,
                     inputs=[openreview_link_input],
                     outputs=[review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                             openreview_title, openreview_rebuttal, status_html]
+                             openreview_title, openreview_rebuttal, openreview_ac_guide_url, status_html]
                 ).success(
                     fn=lambda r4, r5, r6: (
                         gr.update(visible=bool(r4.strip())),
@@ -1318,7 +1350,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 ).success(
                     fn=_show_raw_and_switch,
                     inputs=[review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                            openreview_rebuttal, openreview_title],
+                            openreview_rebuttal, openreview_title, openreview_ac_guide_url],
                     outputs=_show_raw_outputs
                 ).success(
                     fn=lambda: gr.update(interactive=True),
@@ -1338,7 +1370,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 ).success(
                     fn=_show_raw_and_switch,
                     inputs=[review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                            paste_rebuttal, no_title_state],
+                            paste_rebuttal, no_title_state, no_ac_guide_state],
                     outputs=_show_raw_outputs
                 ).success(
                     fn=lambda: gr.update(interactive=True),
@@ -1355,13 +1387,14 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     gr.update(visible=False),
                     gr.update(visible=False),
                     gr.update(visible=False),
+                    gr.update(visible=False, value=""),
                     gr.update(visible=True),
                 )
 
             back_to_input_btn.click(
                 fn=_back_to_input,
                 inputs=[],
-                outputs=[input_section, results_section, back_to_input_btn, paper_title, view_results_btn]
+                outputs=[input_section, results_section, back_to_input_btn, paper_title, ac_guide_link, view_results_btn]
             )
 
             def _view_results():
@@ -1371,13 +1404,14 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     gr.update(visible=True),
                     gr.update(visible=True),
                     gr.update(visible=True),
+                    gr.update(),
                     gr.update(visible=False),
                 )
 
             view_results_btn.click(
                 fn=_view_results,
                 inputs=[],
-                outputs=[input_section, results_section, back_to_input_btn, paper_title, view_results_btn]
+                outputs=[input_section, results_section, back_to_input_btn, paper_title, ac_guide_link, view_results_btn]
             )
 
             # Clear button
@@ -1385,7 +1419,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 logger.log("clear", tab="int", source="user")
                 return (
                     "", "", "", "", "", "",
-                    "",
+                    "", "",
                     3,
                     "", "",
                     *([""] * MAX_INTERACTIVE_REVIEWS),
@@ -1400,7 +1434,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 inputs=[],
                 outputs=[
                     review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                    paste_rebuttal,
+                    paste_rebuttal, openreview_ac_guide_url,
                     interactive_review_count,
                     most_common, most_divergent,
                     *none_texts, *agreement_texts, *polarity_texts, *topic_texts,
@@ -1415,13 +1449,14 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     gr.update(visible=False, value=""),
                     gr.update(visible=False, value=""),
                     gr.update(visible=False, value=""),
+                    gr.update(visible=False, value=""),
                 ),
                 inputs=[],
                 outputs=[
                     review4_textbox, review5_textbox, review6_textbox,
                     interactive_rebuttal_toggle,
                     *rebuttal_for_reviews,
-                    interactive_rebuttal_display, paper_title,
+                    interactive_rebuttal_display, paper_title, ac_guide_link,
                     polarity_progress_html, agreement_progress_html,
                 ]
             )
