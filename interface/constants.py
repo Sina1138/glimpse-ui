@@ -305,15 +305,37 @@ html, body, .gradio-container, main, .contain { scroll-behavior: smooth !importa
     white-space: nowrap;
 }
 .ac-guide-link:hover { background: #f3f4f6; color: #111827; }
-.prep-toggle-bar {
-    margin: 4px 0 6px 0 !important;
-    padding: 0 !important;
-    min-height: 0 !important;
+.prep-bottom-nav-host {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 10000 !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    border-top: 1px solid #e5e7eb !important;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.10) !important;
+    padding: 3px 18px !important;
+    margin: 0 !important;
+    backdrop-filter: blur(6px);
+    box-sizing: border-box !important;
+    min-height: 42px !important;
+    display: flex !important;
+    align-items: center !important;
 }
-.prep-toggle-bar > * {
+.prep-bottom-nav {
+    width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
 }
+.prep-bottom-nav-inner {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: min(100%, 1780px) !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+}
+body:has(.prep-bottom-nav-host) { padding-bottom: 46px; }
 
 /* Progress bar animations — global so they survive HTML replacement in generators */
 @keyframes procspin { to { transform: rotate(360deg); } }

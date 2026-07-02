@@ -551,11 +551,13 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     toggle_buttons.append(rebuttal_toggle_html())
                 jump_html = jump_buttons_html(number_of_displayed_reviews, prefix="pre")
                 toggle_bar_html = (
-                    '<div style="display:flex;align-items:center;gap:8px;">'
+                    '<div class="prep-bottom-nav">'
+                    '<div class="prep-bottom-nav-inner">'
                     f'<span style="font-size:0.78em;color:#6b7280;white-space:nowrap;">Jump to:</span>'
                     + jump_html
                     + '<span style="flex:1;"></span>'
-                    + "".join(toggle_buttons) + '</div>'
+                    + "".join(toggle_buttons)
+                    + '</div></div>'
                 )
                 toggle_bar_update = gr.update(visible=True, value=toggle_bar_html)
 
@@ -603,8 +605,6 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                             interactive=False
                         )
 
-            prep_toggle_bar = gr.HTML(visible=False, value="", container=False, padding=False, elem_classes=["prep-toggle-bar"])
-
             with gr.Row(visible=False) as prep_opinions_row:
                 most_common_sentences = gr.HTML(visible=False, value="", label="Most Common Opinions")
                 most_unique_sentences = gr.HTML(visible=False, value="", label="Most Divergent Opinions")
@@ -619,6 +619,13 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 prep_agreements.append(gr.HTML(visible=False, value=""))
                 prep_rebuttals.append(gr.HTML(visible=False, value=""))
             prep_general_rebuttal = gr.HTML(visible=False, value="")
+            prep_toggle_bar = gr.HTML(
+                visible=False,
+                value="",
+                container=False,
+                padding=False,
+                elem_classes=["prep-bottom-nav-host"]
+            )
 
             # --- Pre-processed callbacks ---
 
