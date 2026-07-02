@@ -252,6 +252,69 @@ html, body, .gradio-container, main, .contain { scroll-behavior: smooth !importa
 /* Remove the border/separator line around the display mode radio row */
 .no-border-row { border: none !important; box-shadow: none !important; padding: 0 !important; margin-bottom: 0 !important; }
 
+/* Pre-processed header layout */
+.prep-header-row { align-items: stretch !important; margin-bottom: 8px !important; }
+.prep-left-column {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    min-height: 0 !important;
+}
+.prep-right-column {
+    min-height: 0 !important;
+    height: 100% !important;
+}
+.prep-left-column > *, .prep-right-column > * { width: 100%; }
+.prep-paper-summary {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 14px 18px;
+    background: #ffffff;
+    box-sizing: border-box;
+}
+.prep-paper-summary-title {
+    margin: 0 0 8px 0;
+    color: #1f2937;
+    font-size: 1.05em;
+    font-weight: 700;
+    line-height: 1.3;
+}
+.prep-paper-summary-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    color: #374151;
+}
+.ac-guide-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #f9fafb;
+    color: #374151;
+    text-decoration: none !important;
+    font-weight: 600;
+    font-size: 0.95em;
+    white-space: nowrap;
+}
+.ac-guide-link:hover { background: #f3f4f6; color: #111827; }
+.prep-toggle-bar {
+    margin: 4px 0 6px 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+}
+.prep-toggle-bar > * {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 /* Progress bar animations — global so they survive HTML replacement in generators */
 @keyframes procspin { to { transform: rotate(360deg); } }
 @keyframes agrslide { 0% { width:15%; margin-left:0; } 50% { width:35%; margin-left:50%; } 100% { width:15%; margin-left:85%; } }

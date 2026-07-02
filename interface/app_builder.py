@@ -177,7 +177,7 @@ def _render_ac_guide_link(ac_guide_url: str) -> str:
     payload_attr = _html.escape(_json.dumps(payload), quote=True)
 
     return (
-        f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" '
+        f'<a class="ac-guide-link" href="{safe_url}" target="_blank" rel="noopener noreferrer" '
         f'data-log-event="ac_guide_click" data-log-payload="{payload_attr}" '
         'style="display:inline-flex;align-items:center;justify-content:center;'
         'min-height:42px;box-sizing:border-box;width:100%;padding:0 14px;'
@@ -185,6 +185,23 @@ def _render_ac_guide_link(ac_guide_url: str) -> str:
         'color:#374151;text-decoration:none;font-weight:600;font-size:0.95em;'
         'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
         'Area Chair Guide</a>'
+    )
+
+
+def _render_preprocessed_summary(current_id: str, paper_title: str, current_index: int, total: int) -> str:
+    """Render the pre-processed paper title and navigation metadata with tight spacing."""
+    safe_id = _html.escape(current_id, quote=True)
+    safe_title = _html.escape(paper_title.strip() if paper_title else "Submission")
+    submission_count = _html.escape(f"{current_index + 1} of {total} submissions")
+    return (
+        '<div class="prep-paper-summary">'
+        f'<div class="prep-paper-summary-title">{safe_title}</div>'
+        '<div class="prep-paper-summary-meta">'
+        f'<a href="{safe_id}" target="_blank" rel="noopener noreferrer">View on OpenReview</a>'
+        '<span>&middot;</span>'
+        f'<span>({submission_count})</span>'
+        '</div>'
+        '</div>'
     )
 
 
@@ -371,17 +388,11 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 if not paper_title:
                     paper_meta = state.get("metadata_for_year", {}).get(current_id, {})
                     paper_title = paper_meta.get("paper_title", "") if isinstance(paper_meta, dict) else ""
-                if paper_title:
-                    new_review_id = (
-                        f"### {paper_title}\n\n"
-                        f"[View on OpenReview]({current_id}) &nbsp;·&nbsp; "
-                        f"({current_index + 1} of {len(state['review_ids'])} submissions)"
-                    )
-                else:
-                    new_review_id = (
-                        f"### [View on OpenReview]({current_id})\n\n"
-                        f"({current_index + 1} of {len(state['review_ids'])} submissions)"
-                    )
+                paper_summary_html = _render_preprocessed_summary(
+                    current_id, paper_title, current_index, len(state["review_ids"])
+                )
+                prep_ac_guide_url = f"https://iclr.cc/Conferences/{state['year_choice']}/ACGuide"
+                prep_ac_guide_html = _render_ac_guide_link(prep_ac_guide_url)
 
                 number_of_displayed_reviews = len(current_review)
                 review_updates = []
@@ -518,9 +529,11 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     )
                     most_common_visibility = gr.update(visible=True, value=most_common_html)
                     most_unique_visibility = gr.update(visible=False, value="")
+                    opinions_row_visibility = gr.update(visible=True)
                 else:
                     most_common_visibility = gr.update(visible=False, value="")
                     most_unique_visibility = gr.update(visible=False, value="")
+                    opinions_row_visibility = gr.update(visible=False)
 
                 if show_polarity:
                     topic_color_map_visibility = gr.update(visible=True, value=POLARITY_LEGEND)
@@ -547,9 +560,11 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 toggle_bar_update = gr.update(visible=True, value=toggle_bar_html)
 
                 return (
-                    new_review_id,
+                    paper_summary_html,
+                    prep_ac_guide_html,
                     *review_updates,
                     *agreement_updates,
+                    opinions_row_visibility,
                     most_common_visibility,
                     most_unique_visibility,
                     topic_color_map_visibility,
@@ -561,14 +576,15 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
             init_display = update_review_display(initial_state, score_type="Original")
 
-            with gr.Row():
-                with gr.Column(scale=1):
-                    review_id = gr.Markdown(value=init_display[0], container=True)
+            with gr.Row(elem_classes=["prep-header-row"]):
+                with gr.Column(scale=1, elem_classes=["prep-left-column"]):
+                    review_id = gr.HTML(value=init_display[0], container=False, padding=False)
                     with gr.Row():
                         previous_button = gr.Button("Previous", variant="secondary", interactive=True)
                         next_button = gr.Button("Next", variant="primary", interactive=True)
+                    prep_ac_guide = gr.HTML(value=init_display[1], container=False, padding=False)
 
-                with gr.Column(scale=1):
+                with gr.Column(scale=1, elem_classes=["prep-right-column"]):
                     year = gr.Dropdown(choices=years, label="Select Year", interactive=True, value=initial_year)
                     if highlights:
                         score_type = gr.Radio(
@@ -587,12 +603,13 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                             interactive=False
                         )
 
-            with gr.Row():
+            prep_toggle_bar = gr.HTML(visible=False, value="", container=False, padding=False, elem_classes=["prep-toggle-bar"])
+
+            with gr.Row(visible=False) as prep_opinions_row:
                 most_common_sentences = gr.HTML(visible=False, value="", label="Most Common Opinions")
                 most_unique_sentences = gr.HTML(visible=False, value="", label="Most Divergent Opinions")
 
-            topic_text_box = gr.HTML(visible=False, value="")
-            prep_toggle_bar = gr.HTML(visible=False, value="")
+            topic_text_box = gr.HTML(visible=False, value="", container=False, padding=False)
             prep_reviews = []
             prep_agreements = []
             prep_rebuttals = []
@@ -630,7 +647,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                            paper_id=st["review_ids"][st["current_review_index"]])
                 return update_review_display(st, st_type)
 
-            _review_outputs = [review_id, *prep_reviews, *prep_agreements, most_common_sentences, most_unique_sentences, topic_text_box, prep_toggle_bar, *prep_rebuttals, prep_general_rebuttal, state]
+            _review_outputs = [review_id, prep_ac_guide, *prep_reviews, *prep_agreements, prep_opinions_row, most_common_sentences, most_unique_sentences, topic_text_box, prep_toggle_bar, *prep_rebuttals, prep_general_rebuttal, state]
             year.change(fn=year_change, inputs=[year, state, score_type], outputs=_review_outputs)
 
             if highlights:
