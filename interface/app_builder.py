@@ -163,10 +163,6 @@ def _gpu_predict_polarity_topic(sentences: List[str]) -> Tuple[Dict, Dict]:
     return polarity_map, topic_map
 
 
-# ---------------------------------------------------------------------------
-# OpenReview fetching
-# ---------------------------------------------------------------------------
-
 def _render_ac_guide_link(ac_guide_url: str) -> str:
     """Render a compact external link to the inferred ICLR Area Chair guide."""
     if not ac_guide_url or not ac_guide_url.strip():
@@ -184,10 +180,11 @@ def _render_ac_guide_link(ac_guide_url: str) -> str:
         f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" '
         f'data-log-event="ac_guide_click" data-log-payload="{payload_attr}" '
         'style="display:inline-flex;align-items:center;justify-content:center;'
-        'height:42px;box-sizing:border-box;width:100%;padding:0 14px;'
+        'min-height:42px;box-sizing:border-box;width:100%;padding:0 14px;'
         'border:1px solid #d1d5db;border-radius:8px;background:#f9fafb;'
         'color:#374151;text-decoration:none;font-weight:600;font-size:0.95em;'
-        'white-space:nowrap;">Area Chair Guide</a>'
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+        'Area Chair Guide</a>'
     )
 
 
@@ -656,7 +653,8 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
             # ---- TOP TOGGLE BAR (always visible) ----
             with gr.Row():
                 paper_title = gr.Textbox("", visible=False, interactive=False, show_label=False, container=False, elem_classes=["paper-title-heading"], scale=8)
-                ac_guide_link = gr.HTML("", visible=False, min_width=170, scale=2)
+                with gr.Column(visible=False, scale=2, min_width=190) as ac_guide_col:
+                    ac_guide_link = gr.HTML("", container=False, padding=False)
                 back_to_input_btn = gr.Button("✏️ Edit Reviews / New Input", visible=False, variant="secondary", scale=5)
                 view_results_btn = gr.Button("📊 View Results", visible=False, variant="secondary", scale=3)
 
@@ -783,7 +781,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
             _show_raw_outputs = [
                 *none_texts,
-                input_section, results_section, back_to_input_btn, paper_title, ac_guide_link, view_results_btn, focus_radio,
+                input_section, results_section, back_to_input_btn, paper_title, ac_guide_col, ac_guide_link, view_results_btn, focus_radio,
                 polarity_progress_html, agreement_progress_html,
                 interactive_rebuttal_toggle,
                 *rebuttal_for_reviews,
@@ -896,7 +894,8 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                         gr.update(visible=True),                               # results_section
                         gr.update(visible=True),                               # back_to_input_btn
                         gr.update(visible=bool(title_text), value=title_text), # paper_title
-                        gr.update(visible=bool(ac_guide_html), value=ac_guide_html), # ac_guide_link
+                        gr.update(visible=bool(ac_guide_html)),                # ac_guide_col
+                        gr.update(value=ac_guide_html),                        # ac_guide_link
                         gr.update(visible=False),                              # view_results_btn
                         gr.update(choices=["No Highlighting", "Polarity ⏳", "Topic ⏳", "Agreement ⏳"],
                                    value="No Highlighting", interactive=True), # focus_radio
@@ -961,7 +960,8 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                         gr.update(visible=True),                               # results_section
                         gr.update(visible=True),                               # back_to_input_btn
                         gr.update(visible=bool(title_text), value=title_text), # paper_title
-                        gr.update(visible=bool(ac_guide_html), value=ac_guide_html), # ac_guide_link
+                        gr.update(visible=bool(ac_guide_html)),                # ac_guide_col
+                        gr.update(value=ac_guide_html),                        # ac_guide_link
                         gr.update(visible=False),                              # view_results_btn
                         gr.update(value="No Highlighting"),                    # focus_radio (hidden, no change)
                         gr.update(visible=False, value=""),                    # polarity_progress_html
@@ -1387,14 +1387,15 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     gr.update(visible=False),
                     gr.update(visible=False),
                     gr.update(visible=False),
-                    gr.update(visible=False, value=""),
+                    gr.update(visible=False),
+                    gr.update(value=""),
                     gr.update(visible=True),
                 )
 
             back_to_input_btn.click(
                 fn=_back_to_input,
                 inputs=[],
-                outputs=[input_section, results_section, back_to_input_btn, paper_title, ac_guide_link, view_results_btn]
+                outputs=[input_section, results_section, back_to_input_btn, paper_title, ac_guide_col, ac_guide_link, view_results_btn]
             )
 
             def _view_results():
@@ -1405,13 +1406,14 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     gr.update(visible=True),
                     gr.update(visible=True),
                     gr.update(),
+                    gr.update(),
                     gr.update(visible=False),
                 )
 
             view_results_btn.click(
                 fn=_view_results,
                 inputs=[],
-                outputs=[input_section, results_section, back_to_input_btn, paper_title, ac_guide_link, view_results_btn]
+                outputs=[input_section, results_section, back_to_input_btn, paper_title, ac_guide_col, ac_guide_link, view_results_btn]
             )
 
             # Clear button
@@ -1447,7 +1449,8 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     *[gr.update(visible=False, value="") for _ in range(MAX_INTERACTIVE_REVIEWS)],
                     gr.update(visible=False, value=""),
                     gr.update(visible=False, value=""),
-                    gr.update(visible=False, value=""),
+                    gr.update(visible=False),
+                    gr.update(value=""),
                     gr.update(visible=False, value=""),
                     gr.update(visible=False, value=""),
                 ),
@@ -1456,7 +1459,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     review4_textbox, review5_textbox, review6_textbox,
                     interactive_rebuttal_toggle,
                     *rebuttal_for_reviews,
-                    interactive_rebuttal_display, paper_title, ac_guide_link,
+                    interactive_rebuttal_display, paper_title, ac_guide_col, ac_guide_link,
                     polarity_progress_html, agreement_progress_html,
                 ]
             )
