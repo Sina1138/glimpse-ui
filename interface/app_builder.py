@@ -198,6 +198,23 @@ def _render_ac_guide_link(ac_guide_url: str) -> str:
     )
 
 
+def _render_review_bottom_nav(active_count: int, prefix: str, include_rebuttal_toggle: bool) -> str:
+    """Render the fixed bottom review navigation bar shared by both review tabs."""
+    right_buttons = [review_toggle_html()]
+    if include_rebuttal_toggle:
+        right_buttons.append(rebuttal_toggle_html())
+
+    return (
+        '<div class="review-bottom-nav">'
+        '<div class="review-bottom-nav-inner">'
+        '<span style="font-size:0.78em;color:#6b7280;white-space:nowrap;">Jump to:</span>'
+        + jump_buttons_html(active_count, prefix=prefix)
+        + '<span style="flex:1;"></span>'
+        + "".join(right_buttons)
+        + '</div></div>'
+    )
+
+
 def _render_preprocessed_summary(current_id: str, paper_title: str, current_index: int, total: int) -> str:
     """Render the pre-processed paper title and navigation metadata with tight spacing."""
     safe_id = _html.escape(current_id, quote=True)
@@ -596,18 +613,10 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     rebuttal_html
                     for _, rebuttal_html in review_items_cache
                 )
-                toggle_buttons = [review_toggle_html()]
-                if has_any_rebuttal:
-                    toggle_buttons.append(rebuttal_toggle_html())
-                jump_html = jump_buttons_html(number_of_displayed_reviews, prefix="pre")
-                toggle_bar_html = (
-                    '<div class="prep-bottom-nav">'
-                    '<div class="prep-bottom-nav-inner">'
-                    f'<span style="font-size:0.78em;color:#6b7280;white-space:nowrap;">Jump to:</span>'
-                    + jump_html
-                    + '<span style="flex:1;"></span>'
-                    + "".join(toggle_buttons)
-                    + '</div></div>'
+                toggle_bar_html = _render_review_bottom_nav(
+                    number_of_displayed_reviews,
+                    prefix="pre",
+                    include_rebuttal_toggle=has_any_rebuttal,
                 )
                 toggle_bar_update = gr.update(visible=True, value=toggle_bar_html)
 
@@ -677,7 +686,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 value="",
                 container=False,
                 padding=False,
-                elem_classes=["prep-bottom-nav-host"]
+                elem_classes=["review-bottom-nav-host"]
             )
 
             # --- Pre-processed callbacks ---
@@ -865,8 +874,6 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     most_divergent = gr.HTML(visible=False, value="")
                     most_common = gr.HTML(visible=False, value="")
 
-                interactive_rebuttal_toggle = gr.HTML(visible=False, value="")
-
                 none_texts = []
                 agreement_texts = []
                 polarity_texts = []
@@ -886,6 +893,13 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     rebuttal_for_reviews.append(gr.HTML(visible=False, value=""))
 
                 interactive_rebuttal_display = gr.HTML(visible=False, value="")
+                interactive_rebuttal_toggle = gr.HTML(
+                    visible=False,
+                    value="",
+                    container=False,
+                    padding=False,
+                    elem_classes=["review-bottom-nav-host"]
+                )
 
             # ---- CALLBACK DEFINITIONS ----
 
@@ -975,15 +989,10 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     general_formatted = format_general_rebuttals(rebuttal or "")
                     has_any = has_per_review or bool(general_formatted)
 
-                    right_buttons = [review_toggle_html()]
-                    if has_any:
-                        right_buttons.append(rebuttal_toggle_html())
-                    toggle_bar = (
-                        '<div style="display:flex;align-items:center;gap:8px;">'
-                        '<span style="font-size:0.78em;color:#6b7280;white-space:nowrap;">Jump to:</span>'
-                        + jump_buttons_html(active_count)
-                        + '<span style="flex:1;"></span>'
-                        + "".join(right_buttons) + '</div>'
+                    toggle_bar = _render_review_bottom_nav(
+                        active_count,
+                        prefix="int",
+                        include_rebuttal_toggle=has_any,
                     )
 
                     title_text = title.strip() if title and title.strip() else ""
@@ -1077,15 +1086,10 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     general_formatted = format_general_rebuttals(rebuttal or "")
                     has_any = has_per_review or bool(general_formatted)
 
-                    right_buttons = [review_toggle_html()]
-                    if has_any:
-                        right_buttons.append(rebuttal_toggle_html())
-                    toggle_bar = (
-                        '<div style="display:flex;align-items:center;gap:8px;">'
-                        '<span style="font-size:0.78em;color:#6b7280;white-space:nowrap;">Jump to:</span>'
-                        + jump_buttons_html(active_count)
-                        + '<span style="flex:1;"></span>'
-                        + "".join(right_buttons) + '</div>'
+                    toggle_bar = _render_review_bottom_nav(
+                        active_count,
+                        prefix="int",
+                        include_rebuttal_toggle=has_any,
                     )
 
                     title_text = title.strip() if title and title.strip() else ""

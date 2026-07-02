@@ -305,7 +305,7 @@ html, body, .gradio-container, main, .contain { scroll-behavior: smooth !importa
     white-space: nowrap;
 }
 .ac-guide-link:hover { background: #f3f4f6; color: #111827; }
-.prep-bottom-nav-host {
+.review-bottom-nav-host {
     position: fixed !important;
     left: 0 !important;
     right: 0 !important;
@@ -322,12 +322,12 @@ html, body, .gradio-container, main, .contain { scroll-behavior: smooth !importa
     display: flex !important;
     align-items: center !important;
 }
-.prep-bottom-nav {
+.review-bottom-nav {
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
 }
-.prep-bottom-nav-inner {
+.review-bottom-nav-inner {
     display: flex !important;
     align-items: center !important;
     gap: 8px !important;
@@ -335,7 +335,7 @@ html, body, .gradio-container, main, .contain { scroll-behavior: smooth !importa
     margin: 0 auto !important;
     padding: 0 !important;
 }
-body:has(.prep-bottom-nav-host) { padding-bottom: 46px; }
+body:has(.review-bottom-nav) { padding-bottom: 46px; }
 
 /* Progress bar animations — global so they survive HTML replacement in generators */
 @keyframes procspin { to { transform: rotate(360deg); } }
