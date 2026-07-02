@@ -165,11 +165,15 @@ def _gpu_predict_polarity_topic(sentences: List[str]) -> Tuple[Dict, Dict]:
 # ID and starts/ends tasks. Overlay CSS keeps the underlying review UI intact
 # (no re-layout) while making it unreachable until a task is started.
 _STUDY_GATE_CSS = """
-#study-gate {position:fixed; inset:0; background:#f3f4f6; z-index:1000; overflow:auto; padding:6vh 16px;}
+#study-gate {position:fixed; inset:0; background:#f3f4f6; z-index:20000; overflow:auto; padding:6vh 16px;}
 #study-gate .study-gate-inner {max-width:540px; margin:0 auto; background:white;
-    border:1px solid #e5e7eb; border-radius:12px; padding:28px !important;}
-#study-end-row {background:#fffbeb; border:1px solid #fde68a; border-radius:8px;
-    padding:6px 12px; margin-bottom:8px; align-items:center;}
+    border:1px solid #e5e7eb; border-radius:12px; padding:28px !important; position:relative; z-index:1;}
+#study-settings-panel {max-width:640px; margin:0 auto; background:#fffbeb; border:1px solid #fde68a;
+    border-radius:8px; padding:18px !important;}
+#study-settings-panel .study-settings-label {font-size:0.86em; color:#6b7280; font-weight:600;
+    text-transform:uppercase; letter-spacing:0;}
+#study-settings-panel .study-settings-value {font-size:1.35em; color:#111827; font-weight:700; margin-top:4px;}
+#study-settings-panel .study-elapsed-value {font-variant-numeric:tabular-nums;}
 """
 
 
@@ -228,6 +232,35 @@ def _render_preprocessed_summary(current_id: str, paper_title: str, current_inde
         '<span>&middot;</span>'
         f'<span>({submission_count})</span>'
         '</div>'
+        '</div>'
+    )
+
+
+def _format_elapsed_seconds(elapsed_seconds: float) -> str:
+    """Format task elapsed time as MM:SS, or HH:MM:SS after one hour."""
+    total_seconds = max(0, int(elapsed_seconds))
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+def _render_study_elapsed_html(start_time: Optional[float] = None) -> str:
+    """Render the study elapsed-time counter target updated by client-side JS."""
+    if start_time:
+        start_ms = int(start_time * 1000)
+        elapsed = _format_elapsed_seconds(time.time() - start_time)
+        data_attr = f' data-study-start-ms="{start_ms}"'
+    else:
+        elapsed = "00:00"
+        data_attr = ""
+
+    return (
+        '<div class="study-settings-block">'
+        '<div class="study-settings-label">Elapsed Time</div>'
+        f'<div class="study-settings-value study-elapsed-value"{data_attr}>{elapsed}</div>'
         '</div>'
     )
 
@@ -361,6 +394,31 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
         }, 300);
 """
 
+    if study_mode:
+        app_js += r"""
+        function formatStudyElapsed(totalSeconds) {
+            totalSeconds = Math.max(0, Math.floor(totalSeconds));
+            var hours = Math.floor(totalSeconds / 3600);
+            var minutes = Math.floor((totalSeconds % 3600) / 60);
+            var seconds = totalSeconds % 60;
+            var two = function(n) { return String(n).padStart(2, '0'); };
+            if (hours > 0) return two(hours) + ':' + two(minutes) + ':' + two(seconds);
+            return two(minutes) + ':' + two(seconds);
+        }
+        function updateStudyElapsed() {
+            var el = document.querySelector('#study-elapsed-time [data-study-start-ms]');
+            if (!el) return;
+            var startMs = parseInt(el.getAttribute('data-study-start-ms') || '0', 10);
+            if (!startMs) {
+                el.textContent = '00:00';
+                return;
+            }
+            el.textContent = formatStudyElapsed((Date.now() - startMs) / 1000);
+        }
+        setInterval(updateStudyElapsed, 1000);
+        updateStudyElapsed();
+"""
+
     # JS event bridge for logging HTML-only controls
     if config.logging_enabled:
         app_js += "\n" + JS_EVENT_BRIDGE + "\n"
@@ -395,9 +453,6 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     gate_task = gr.Radio(choices=list(years), label="Task / Submission")
                     gate_start_btn = gr.Button("Start Task", variant="primary")
                     gate_status = gr.HTML("", visible=False)
-            with gr.Row(visible=False, elem_id="study-end-row") as study_end_row:
-                study_task_label = gr.Markdown("")
-                study_end_btn = gr.Button("End Task", variant="stop", scale=0)
 
         # ==============================================================
         # PRE-PROCESSED TAB
@@ -419,6 +474,8 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 "current_review": initial_review,
                 "number_of_displayed_reviews": number_of_displayed_reviews,
                 "metadata_for_year": initial_metadata,
+                "study_participant_id": "",
+                "study_task_start_time": None,
             }
             state = gr.State(initial_state)
 
@@ -731,65 +788,112 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
             next_button.click(fn=next_review, inputs=[state, score_type], outputs=_review_outputs)
             previous_button.click(fn=previous_review, inputs=[state, score_type], outputs=_review_outputs)
 
+        # ==============================================================
+        # STUDY SETTINGS TAB
+        # ==============================================================
+        if study_mode:
+            with gr.Tab("Study Settings", elem_classes=["results-compact"]):
+                with gr.Column(elem_id="study-settings-panel"):
+                    study_task_label = gr.HTML(
+                        value=(
+                            '<div class="study-settings-block">'
+                            '<div class="study-settings-label">Active Task</div>'
+                            '<div class="study-settings-value">Not started</div>'
+                            '</div>'
+                        ),
+                        container=False,
+                        padding=False,
+                    )
+                    study_elapsed_time = gr.HTML(
+                        value=_render_study_elapsed_html(),
+                        elem_id="study-elapsed-time",
+                        container=False,
+                        padding=False,
+                    )
+                    study_end_btn = gr.Button("End Task", variant="stop")
+
             # --- Study session gate wiring (study builds only) ---
-            if study_mode:
-                def _study_start(pid, task, st, st_type):
-                    pid = (pid or "").strip()
-                    if not pid or not task:
-                        msg = render_status(
-                            "Enter a participant ID and select a task before starting.", "warning")
-                        return (
-                            *[gr.update() for _ in range(len(_review_outputs) - 1)], st,
-                            gr.update(visible=True),           # study_gate stays
-                            gr.update(visible=False),          # study_end_row
-                            gr.update(),                       # study_task_label
-                            gr.update(visible=True, value=msg),  # gate_status
-                        )
-                    logger.set_participant(pid)
-                    st["year_choice"] = task
-                    st["scored_reviews_for_year"] = get_preprocessed_scores(task)
-                    st["metadata_for_year"] = get_preprocessed_metadata(task)
-                    st["review_ids"] = list(st["scored_reviews_for_year"].keys())
-                    st["current_review_index"] = 0
-                    st["current_review"] = st["scored_reviews_for_year"][st["review_ids"][0]]
-                    logger.log("task_start", tab="pre", source="moderator",
-                               paper_id=st["review_ids"][0],
-                               payload={"task": task, "participant_id": pid})
-                    disp = update_review_display(st, st_type)
+            def _study_start(pid, task, st, st_type):
+                pid = (pid or "").strip()
+                if not pid or not task:
+                    msg = render_status(
+                        "Enter a participant ID and select a task before starting.", "warning")
                     return (
-                        *disp,
-                        gr.update(visible=False),  # study_gate
-                        gr.update(visible=True),   # study_end_row
-                        gr.update(value=f"**{pid}** &nbsp;·&nbsp; {task}"),
-                        gr.update(visible=False, value=""),
+                        *[gr.update() for _ in range(len(_review_outputs) - 1)], st,
+                        gr.update(visible=True),              # study_gate stays
+                        gr.update(),                          # study_task_label
+                        gr.update(),                          # study_elapsed_time
+                        gr.update(visible=True, value=msg),   # gate_status
                     )
-
-                gate_start_btn.click(
-                    fn=_study_start,
-                    inputs=[gate_pid, gate_task, state, score_type],
-                    outputs=[*_review_outputs, study_gate, study_end_row, study_task_label, gate_status],
+                logger.set_participant(pid)
+                start_time = time.time()
+                st["year_choice"] = task
+                st["scored_reviews_for_year"] = get_preprocessed_scores(task)
+                st["metadata_for_year"] = get_preprocessed_metadata(task)
+                st["review_ids"] = list(st["scored_reviews_for_year"].keys())
+                st["current_review_index"] = 0
+                st["current_review"] = st["scored_reviews_for_year"][st["review_ids"][0]]
+                st["study_participant_id"] = pid
+                st["study_task_start_time"] = start_time
+                logger.log("task_start", tab="pre", source="moderator",
+                           paper_id=st["review_ids"][0],
+                           payload={"task": task, "participant_id": pid})
+                disp = update_review_display(st, st_type)
+                task_html = (
+                    '<div class="study-settings-block">'
+                    '<div class="study-settings-label">Active Task</div>'
+                    f'<div class="study-settings-value">{_html.escape(pid)} &middot; {_html.escape(str(task))}</div>'
+                    '</div>'
+                )
+                return (
+                    *disp,
+                    gr.update(visible=False),  # study_gate
+                    gr.update(value=task_html),
+                    gr.update(value=_render_study_elapsed_html(start_time)),
+                    gr.update(visible=False, value=""),
                 )
 
-                def _study_end(st):
-                    current_paper = ""
-                    if st.get("review_ids"):
-                        current_paper = st["review_ids"][st.get("current_review_index", 0)]
-                    logger.log("task_end", tab="pre", source="moderator",
-                               paper_id=current_paper,
-                               payload={"task": st.get("year_choice", "")})
-                    return (
-                        gr.update(visible=True),            # study_gate back
-                        gr.update(visible=False),           # study_end_row
-                        gr.update(value=""),                # study_task_label
-                        gr.update(visible=False, value=""), # gate_status
-                        gr.update(value=None),              # gate_task reset
-                    )
+            gate_start_btn.click(
+                fn=_study_start,
+                inputs=[gate_pid, gate_task, state, score_type],
+                outputs=[*_review_outputs, study_gate, study_task_label, study_elapsed_time, gate_status],
+            )
 
-                study_end_btn.click(
-                    fn=_study_end,
-                    inputs=[state],
-                    outputs=[study_gate, study_end_row, study_task_label, gate_status, gate_task],
+            def _study_end(st):
+                current_paper = ""
+                if st.get("review_ids"):
+                    current_paper = st["review_ids"][st.get("current_review_index", 0)]
+                start_time = st.get("study_task_start_time")
+                elapsed_seconds = int(max(0, time.time() - start_time)) if start_time else 0
+                logger.log("task_end", tab="pre", source="moderator",
+                           paper_id=current_paper,
+                           payload={
+                               "task": st.get("year_choice", ""),
+                               "elapsed_seconds": elapsed_seconds,
+                               "elapsed_display": _format_elapsed_seconds(elapsed_seconds),
+                           })
+                st["study_task_start_time"] = None
+                st["study_participant_id"] = ""
+                task_html = (
+                    '<div class="study-settings-block">'
+                    '<div class="study-settings-label">Active Task</div>'
+                    '<div class="study-settings-value">Not started</div>'
+                    '</div>'
                 )
+                return (
+                    gr.update(visible=True),             # study_gate back
+                    gr.update(value=task_html),          # study_task_label reset
+                    gr.update(value=_render_study_elapsed_html()),
+                    gr.update(visible=False, value=""),  # gate_status
+                    gr.update(value=None),               # gate_task reset
+                    st,
+                )
+
+            study_end_btn.click(
+                fn=_study_end,
+                inputs=[state],
+                outputs=[study_gate, study_task_label, study_elapsed_time, gate_status, gate_task, state],
+            )
 
         # ==============================================================
         # INTERACTIVE TAB
