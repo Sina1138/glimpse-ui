@@ -77,6 +77,21 @@ def load_scored_reviews_with_rebuttals(csv_path: Path = None):
         return [], pd.DataFrame()
 
     df = pd.read_csv(csv_path)
+    required_cols = {"year", "scored_dict"}
+    missing_cols = required_cols - set(df.columns)
+    if missing_cols:
+        columns = list(df.columns)
+        if len(columns) == 1 and str(columns[0]).startswith("version https://git-lfs.github.com/spec/v1"):
+            raise RuntimeError(
+                f"{csv_path} is a Git LFS pointer file, not the real scored-review CSV. "
+                "Run `git lfs pull --include=study/study_data/study_scored_reviews.csv` "
+                "from the repository root, or copy the real CSV into that path."
+            )
+        raise RuntimeError(
+            f"{csv_path} is missing required column(s): {sorted(missing_cols)}. "
+            f"Found columns: {columns}"
+        )
+
     tqdm.pandas(desc="Parsing scored_dict")
     df["scored_dict"] = df["scored_dict"].progress_apply(ast.literal_eval)
 
