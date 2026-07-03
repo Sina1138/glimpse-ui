@@ -18,4 +18,4 @@ from interface.app_builder import build_review_app
 # No model preloading — this condition does not use ML models.
 
 demo = build_review_app(no_highlight_study_config())
-demo.launch(share=False, ssr_mode=False)
+demo.launch(share=True, ssr_mode=False)

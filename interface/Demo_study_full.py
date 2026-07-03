@@ -16,4 +16,4 @@ from interface.app_builder import build_review_app, get_interactive_processor
 get_interactive_processor()
 
 demo = build_review_app(full_study_config())
-demo.launch(share=False, ssr_mode=False)
+demo.launch(share=True, ssr_mode=False)
