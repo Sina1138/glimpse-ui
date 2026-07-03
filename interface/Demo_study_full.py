@@ -1,4 +1,4 @@
-"""ReView Interface — FULL study condition.
+"""ReView Interface — Highlighted study condition.
 
 Launches the app with all highlight features enabled and JSONL interaction
 logging to study/interaction_logs/.

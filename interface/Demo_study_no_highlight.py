@@ -1,4 +1,4 @@
-"""ReView Interface — NO-HIGHLIGHT study condition.
+"""ReView Interface — No Highlighting study condition.
 
 Launches the app with plain review display only (no polarity, topic, or
 agreement computation). JSONL interaction logs written to

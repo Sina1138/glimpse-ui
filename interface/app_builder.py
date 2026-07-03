@@ -430,7 +430,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
     # ------------------------------------------------------------------
 
     with gr.Blocks(
-        title="ReView",
+        title="Human Evaluation Study",
         css=CUSTOM_CSS + (_STUDY_GATE_CSS if study_mode else ""),
         theme=_theme,
         js=app_js,
@@ -446,8 +446,8 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
         if study_mode:
             with gr.Column(elem_id="study-gate", visible=True) as study_gate:
                 with gr.Column(elem_classes=["study-gate-inner"]):
-                    gr.Markdown("## ReView Study — Session Control")
-                    _cond_label = "ReView (with highlights)" if highlights else "Baseline (no highlights)"
+                    gr.Markdown("## Study Session Control")
+                    _cond_label = "Highlighted" if highlights else "No Highlighting"
                     gr.Markdown(f"**Condition:** {_cond_label} &nbsp;·&nbsp; *moderator use only*")
                     gate_pid = gr.Textbox(label="Participant ID", placeholder="e.g., P01", max_lines=1)
                     gate_task = gr.Radio(choices=list(years), label="Task / Submission")
@@ -715,7 +715,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                             interactive=True
                         )
                     else:
-                        # No-highlight condition: hidden radio fixed to plain
+                        # No Highlighting condition: hidden radio fixed to plain
                         score_type = gr.Radio(
                             choices=["No Highlighting"],
                             label="Display Mode:",
@@ -965,7 +965,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                         most_divergent = gr.HTML(visible=False, value="", label="Most Divergent Opinions")
                         most_common = gr.HTML(visible=False, value="", label="Most Common Opinions")
                 else:
-                    # No-highlight: no display mode controls, no progress, no legends
+                    # No Highlighting: no display mode controls, no progress, no legends
                     focus_radio = gr.Radio(
                         choices=["No Highlighting"],
                         value="No Highlighting",
@@ -1165,7 +1165,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     )
 
             else:
-                # No-highlight: simpler version — no background ML thread
+                # No Highlighting: simpler version — no background ML thread
                 def _show_raw_and_switch(r1, r2, r3, r4, r5, r6, rebuttal, title="", ac_guide_url=""):
                     """Show raw tokenized reviews. No ML processing."""
                     from dependencies.Glimpse_tokenizer import glimpse_tokenizer
@@ -1577,7 +1577,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 )
 
             else:
-                # --- No-highlight condition: fetch chain (simplified) ---
+                # --- No Highlighting condition: fetch chain (simplified) ---
 
                 fetch_reviews_button.click(
                     fn=_validate_and_start_fetch,
@@ -1607,7 +1607,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     outputs=[fetch_reviews_button]
                 )
 
-                # --- No-highlight condition: submit chain (simplified) ---
+                # --- No Highlighting condition: submit chain (simplified) ---
                 def _log_manual_submit():
                     logger.log("manual_process_submit", tab="int", source="user")
                     return gr.update(interactive=False)

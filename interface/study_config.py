@@ -50,7 +50,7 @@ def full_study_config() -> StudyConfig:
 
 
 def no_highlight_study_config() -> StudyConfig:
-    """No-highlight (Baseline) study condition: logging + session gate + study dataset."""
+    """No Highlighting study condition: logging + session gate + study dataset."""
     return StudyConfig(
         condition="no_highlight",
         logging_enabled=True,
