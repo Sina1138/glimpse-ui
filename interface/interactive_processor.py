@@ -90,21 +90,23 @@ class InteractiveReviewProcessor:
         self.rsa_model.eval()
         print(f"[TIMING] RSA model loaded in {time.time() - t0:.1f}s")
 
-        # Load polarity model (DeBERTa-v3-base, +5.5% F1 vs SciBERT baseline)
-        self.polarity_tokenizer, self.polarity_model = self._load_classifier(
+        # Polarity + topic classifiers are LAZY: only loaded on first local-backend use.
+        # This lets cheap/CPU hosting skip them entirely when the Gemini backend is used
+        # (demo toggle) — RSA is the only eagerly-loaded model. See gemini_backend.py.
+        self._polarity_cfg = (
             BASE_DIR / "training" / "outputs" / "deberta_polarity" / "final_model",
             "Sina1138/deberta_polarity_Review",
             "Polarity",
         )
-
-        # Load topic model (SciDeBERTa, best F1=0.478)
-        self.topic_tokenizer, self.topic_model = self._load_classifier(
+        self._topic_cfg = (
             BASE_DIR / "training" / "outputs" / "scideberta_topic" / "final_model",
             "Sina1138/scideberta_topic_Review",
             "Topic",
         )
+        self.polarity_tokenizer = self.polarity_model = None
+        self.topic_tokenizer = self.topic_model = None
 
-        print(f"[TIMING] All models loaded in {time.time() - t_total:.1f}s")
+        print(f"[TIMING] Eager models (RSA) loaded in {time.time() - t_total:.1f}s")
 
         # Topic ID to label mapping
         self.id2topic = {
@@ -129,9 +131,22 @@ class InteractiveReviewProcessor:
         if device != self.device:
             print(f"[DEVICE] Switching models from {self.device} to {device}")
             self.rsa_model.to(device)
-            self.polarity_model.to(device)
-            self.topic_model.to(device)
+            # Classifiers are lazy — only move them if already loaded.
+            if self.polarity_model is not None:
+                self.polarity_model.to(device)
+            if self.topic_model is not None:
+                self.topic_model.to(device)
             self.device = device
+
+    def _ensure_polarity(self):
+        """Load the polarity classifier on first use (lazy)."""
+        if self.polarity_model is None:
+            self.polarity_tokenizer, self.polarity_model = self._load_classifier(*self._polarity_cfg)
+
+    def _ensure_topic(self):
+        """Load the topic classifier on first use (lazy)."""
+        if self.topic_model is None:
+            self.topic_tokenizer, self.topic_model = self._load_classifier(*self._topic_cfg)
 
     def _load_classifier(self, local_path: Path, hf_fallback: str, label: str):
         """Load a classification model from local path or HuggingFace fallback."""
@@ -189,6 +204,7 @@ class InteractiveReviewProcessor:
         """Predict polarity. Returns {sentence: "➕" | "➖" | None}."""
         if not sentences:
             return {}
+        self._ensure_polarity()
         self.ensure_device()
         t0 = time.time()
         preds = self._predict_batch(self.polarity_tokenizer, self.polarity_model, sentences, batch_size, "Polarity")
@@ -200,6 +216,7 @@ class InteractiveReviewProcessor:
         """Predict topic. Returns {sentence: topic_label | None}."""
         if not sentences:
             return {}
+        self._ensure_topic()
         self.ensure_device()
         t0 = time.time()
         preds = self._predict_batch(self.topic_tokenizer, self.topic_model, sentences, batch_size, "Topic")

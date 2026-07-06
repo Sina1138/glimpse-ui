@@ -29,6 +29,7 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -74,7 +75,26 @@ def _read_task_inputs(task_dir: Path):
     return meta, texts
 
 
-def _score_task(processor, task_label: str, meta: dict, texts: list) -> dict:
+def _classify_pool(processor, sentences, classifier_backend):
+    """Polarity + topic over the sentence pool, via local models or Gemini.
+
+    Returns (polarity_emoji_map, topic_map) with the exact same contract as the
+    local processor methods. Gemini is used only when explicitly selected; there is
+    NO fallback here — an offline supervised build should fail loudly if Gemini errors.
+    """
+    if classifier_backend == "gemini":
+        from interface import gemini_backend as gb
+        if not gb.gemini_available():
+            raise RuntimeError(
+                "classifier-backend=gemini but google-genai/GEMINI_API_KEY is not available"
+            )
+        print(f"[STUDY] Classifying {len(sentences)} sentences via Gemini ({gb._model_name()}) ...")
+        return gb.predict_polarity_gemini(sentences), gb.predict_topic_gemini(sentences)
+    return processor.predict_polarity(sentences), processor.predict_topic(sentences)
+
+
+def _score_task(processor, task_label: str, meta: dict, texts: list,
+                classifier_backend: str = "local") -> dict:
     """Score one submission. Returns a row dict for the output CSV.
 
     Mirrors the demo pipeline's schema exactly:
@@ -95,9 +115,8 @@ def _score_task(processor, task_label: str, meta: dict, texts: list) -> dict:
     unique_sentences = list(set(s for sl in sentence_lists for s in sl))
     scored_sentences_pool = filter_and_clean_sentences(unique_sentences)
 
-    # --- Polarity + topic (model predictions on noise-filtered sentences) ---
-    polarity_emoji = processor.predict_polarity(scored_sentences_pool)
-    topic_map = processor.predict_topic(scored_sentences_pool)
+    # --- Polarity + topic (local models or Gemini, per --classifier-backend) ---
+    polarity_emoji, topic_map = _classify_pool(processor, scored_sentences_pool, classifier_backend)
     emoji_to_num = {"➖": 0, None: 1, "➕": 2}
 
     # --- RSA / GLIMPSE: raw consensuality + listener/speaker distributions ---
@@ -171,6 +190,14 @@ def main():
     parser.add_argument("--tasks", nargs="+", help="Task labels to include (default: all)")
     parser.add_argument("--list", action="store_true", help="List discovered inputs and exit")
     parser.add_argument("--device", default=None, help="cuda or cpu (default: auto)")
+    parser.add_argument(
+        "--classifier-backend",
+        choices=["local", "gemini"],
+        default=os.environ.get("STUDY_CLASSIFIER_BACKEND", "local"),
+        help="Backend for polarity/topic (RSA always local). Default: local, "
+             "or $STUDY_CLASSIFIER_BACKEND. Use 'gemini' only if the validation gate "
+             "(validation/validate_gemini_classifiers.py) selected it.",
+    )
     args = parser.parse_args()
 
     tasks = _discover_tasks(args.tasks)
@@ -192,10 +219,11 @@ def main():
     processor = InteractiveReviewProcessor(device=device)
     processor.ensure_device()
 
+    print(f"Classifier backend: {args.classifier_backend} (RSA always local)")
     rows = []
     for label, d in tasks:
         meta, texts = _read_task_inputs(d)
-        rows.append(_score_task(processor, label, meta, texts))
+        rows.append(_score_task(processor, label, meta, texts, args.classifier_backend))
         print(f"[STUDY] {label}: done ({len(texts)} reviews)")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)

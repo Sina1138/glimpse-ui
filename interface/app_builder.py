@@ -176,6 +176,48 @@ def _gpu_predict_polarity_topic(sentences: List[str]) -> Tuple[Dict, Dict]:
     return polarity_map, topic_map
 
 
+# --- Backend dispatch for polarity/topic (public demo only) ---------------
+# The Gemini backend offloads the two classifiers to the Gemini API for speed on
+# CPU/cheap-GPU hosting. RSA never goes through here — it always stays local.
+# Study variants never select "gemini", so gemini_backend is never imported there.
+_GEMINI_FALLBACK_NOTICE = (
+    "⚠ Gemini was unavailable, so polarity/topic were computed locally."
+)
+_GEMINI_KEY_MISSING_NOTICE = (
+    "⚠ No Gemini API key configured — polarity/topic were computed locally."
+)
+
+
+def _backend_key(radio_value) -> str:
+    """Map the toggle's display string to a backend key."""
+    return "gemini" if radio_value == "Gemini (faster)" else "local"
+
+
+def _classify_dispatch(sentences, backend, local_fn):
+    """Return (polarity_map, topic_map, notice).
+
+    `local_fn(sentences) -> (polarity_map, topic_map)` is the caller's local path
+    (kept distinct so the ZeroGPU-decorated sync path and the plain background-thread
+    path each use their own). Gemini failures/missing key fall back to `local_fn`
+    and surface a notice.
+    """
+    if backend == "gemini":
+        try:
+            from interface import gemini_backend as gb
+            if gb.gemini_available():
+                pol = gb.predict_polarity_gemini(sentences)
+                top = gb.predict_topic_gemini(sentences)
+                return pol, top, ""
+            notice = _GEMINI_KEY_MISSING_NOTICE
+        except Exception as e:  # import error, API error, timeout — degrade gracefully
+            print(f"[GEMINI] classification failed, falling back to local: {e}")
+            notice = _GEMINI_FALLBACK_NOTICE
+        pol, top = local_fn(sentences)
+        return pol, top, notice
+    pol, top = local_fn(sentences)
+    return pol, top, ""
+
+
 # Full-screen session gate for study builds: moderator enters the participant
 # ID and starts/ends tasks. Overlay CSS keeps the underlying review UI intact
 # (no re-layout) while making it unreachable until a task is started.
@@ -957,6 +999,25 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                             submit_button = gr.Button("Process", variant="primary", interactive=True)
                             clear_button = gr.Button("Clear", variant="secondary", interactive=True)
 
+                # Processing-backend toggle: public demo only. Hidden + locked to Local
+                # in study mode (experimental control) and absent from the no-highlight
+                # condition. RSA always runs locally regardless of this choice.
+                if highlights and not study_mode:
+                    backend_radio = gr.Radio(
+                        choices=["Local (private)", "Gemini (faster)"],
+                        value="Local (private)",
+                        label="Processing backend:",
+                        info="Gemini offloads polarity/topic to Google for speed on CPU hosting. RSA always stays local.",
+                        interactive=True,
+                    )
+                else:
+                    backend_radio = gr.Radio(
+                        choices=["Local (private)"],
+                        value="Local (private)",
+                        visible=False,
+                        interactive=False,
+                    )
+
                 status_html = gr.HTML("", visible=False)
 
             # ---- RESULTS SECTION ----
@@ -993,6 +1054,9 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     most_divergent = gr.HTML(visible=False, value="")
                     most_common = gr.HTML(visible=False, value="")
 
+                # Fallback notice banner shown when Gemini is selected but unavailable (demo only).
+                gemini_notice_html = gr.HTML("", visible=False, elem_classes=["gemini-notice"])
+
                 none_texts = []
                 agreement_texts = []
                 polarity_texts = []
@@ -1026,7 +1090,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
             processing_thread_state = gr.State(None)
             no_ac_guide_state = gr.State("")
 
-            _interactive_inputs = [review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox, focus_radio, interactive_rebuttal_state, processing_thread_state]
+            _interactive_inputs = [review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox, focus_radio, interactive_rebuttal_state, processing_thread_state, backend_radio]
 
             rsa_computation_state = gr.State({})
 
@@ -1040,6 +1104,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 *topic_texts,
                 interactive_review_count,
                 rsa_computation_state,
+                gemini_notice_html,
             ]
 
             _rsa_outputs = [
@@ -1082,10 +1147,11 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
             # --- Show raw reviews and switch to results ---
 
             if highlights:
-                def _show_raw_and_switch(r1, r2, r3, r4, r5, r6, rebuttal, title="", ac_guide_url=""):
+                def _show_raw_and_switch(r1, r2, r3, r4, r5, r6, rebuttal, title="", ac_guide_url="", backend="Local (private)"):
                     """Immediately switch to results with raw tokenized reviews.
                     Kicks off polarity+topic in background thread."""
                     import time as _time
+                    backend_key = _backend_key(backend)
                     from dependencies.Glimpse_tokenizer import glimpse_tokenizer
                     texts = [r1, r2, r3, r4, r5, r6]
                     active_count = sum(1 for t in texts if t and t.strip())
@@ -1133,13 +1199,18 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     )
 
                     processor = get_interactive_processor()
-                    _thread_result = {"polarity": None, "topic": None, "error": None}
+                    _thread_result = {"polarity": None, "topic": None, "notice": "", "error": None}
 
                     def _run_polarity_topic():
                         try:
                             t0 = _time.time()
-                            _thread_result["polarity"] = processor.predict_polarity(all_sentences)
-                            _thread_result["topic"] = processor.predict_topic(all_sentences)
+                            pol, top, notice = _classify_dispatch(
+                                all_sentences, backend_key,
+                                lambda s: (processor.predict_polarity(s), processor.predict_topic(s)),
+                            )
+                            _thread_result["polarity"] = pol
+                            _thread_result["topic"] = top
+                            _thread_result["notice"] = notice
                             print(f"[TIMING] Early polarity+topic thread done in {_time.time() - t0:.1f}s")
                         except Exception as e:
                             _thread_result["error"] = e
@@ -1241,12 +1312,13 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
             # --- Fast processing (full condition only) ---
 
-            def process_interactive_reviews_fast(text1, text2, text3, text4, text5, text6, focus, rebuttal_str="", thread_state=None, progress=gr.Progress()):
+            def process_interactive_reviews_fast(text1, text2, text3, text4, text5, text6, focus, rebuttal_str="", thread_state=None, backend="Local (private)", progress=gr.Progress()):
                 """Fast processing: Polarity + Topic only. RSA runs in background."""
                 import time as _time
                 from dependencies.Glimpse_tokenizer import glimpse_tokenizer
 
                 t_start = _time.time()
+                backend_key = _backend_key(backend)
 
                 _bg_state = _thread_states.pop(thread_state, None) if isinstance(thread_state, str) else None
                 if _bg_state and _bg_state.get("thread"):
@@ -1264,6 +1336,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
                     polarity_map = _result["polarity"]
                     topic_map = _result["topic"]
+                    notice = _result.get("notice", "")
                     print(f"[TIMING] Polarity+Topic (from early-start thread): {_time.time() - t_start:.1f}s wait")
                 else:
                     all_texts = [text1, text2, text3, text4, text5, text6]
@@ -1294,7 +1367,9 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
 
                     progress(0.30, desc="Predicting polarity and topics...")
                     t0 = _time.time()
-                    polarity_map, topic_map = _gpu_predict_polarity_topic(all_sentences)
+                    polarity_map, topic_map, notice = _classify_dispatch(
+                        all_sentences, backend_key, _gpu_predict_polarity_topic
+                    )
                     print(f"[TIMING] Polarity+Topic (sequential): {_time.time() - t0:.1f}s")
 
                 print(f"[TIMING] Fast processing total: {_time.time() - t_start:.1f}s")
@@ -1344,6 +1419,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     *topic_out,
                     len(sentence_lists),
                     rsa_state,
+                    gr.update(visible=bool(notice), value=notice),
                 )
 
             def compute_rsa_in_background(rsa_state_val, current_focus):
@@ -1514,7 +1590,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 ).success(
                     fn=_show_raw_and_switch,
                     inputs=[review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                            openreview_rebuttal, openreview_title, openreview_ac_guide_url],
+                            openreview_rebuttal, openreview_title, openreview_ac_guide_url, backend_radio],
                     outputs=_show_raw_outputs
                 ).success(
                     fn=process_interactive_reviews_fast,
@@ -1553,7 +1629,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 ).success(
                     fn=_show_raw_and_switch,
                     inputs=[review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                            paste_rebuttal, no_title_state, no_ac_guide_state],
+                            paste_rebuttal, no_title_state, no_ac_guide_state, backend_radio],
                     outputs=_show_raw_outputs
                 ).success(
                     fn=process_interactive_reviews_fast,

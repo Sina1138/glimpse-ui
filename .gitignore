@@ -1,3 +1,6 @@
+.env
+.env.local
+
 # project logs and guides
 logs_and_guides/
 *.md
