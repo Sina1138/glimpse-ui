@@ -190,7 +190,7 @@ _GEMINI_KEY_MISSING_NOTICE = (
 
 def _backend_key(radio_value) -> str:
     """Map the toggle's display string to a backend key."""
-    return "gemini" if radio_value == "Gemini (faster)" else "local"
+    return "gemini" if radio_value == "Gemini (cloud)" else "local"
 
 
 def _classify_dispatch(sentences, backend, local_fn):
@@ -203,10 +203,17 @@ def _classify_dispatch(sentences, backend, local_fn):
     """
     if backend == "gemini":
         try:
+            from concurrent.futures import ThreadPoolExecutor
             from interface import gemini_backend as gb
             if gb.gemini_available():
-                pol = gb.predict_polarity_gemini(sentences)
-                top = gb.predict_topic_gemini(sentences)
+                # Polarity and topic are independent requests over the same
+                # sentences — run them concurrently so the user waits one
+                # round-trip, not two. Either future raising falls through to
+                # the local fallback (all-or-nothing, never mixed backends).
+                with ThreadPoolExecutor(max_workers=2) as ex:
+                    pol_future = ex.submit(gb.predict_polarity_gemini, sentences)
+                    top_future = ex.submit(gb.predict_topic_gemini, sentences)
+                    pol, top = pol_future.result(), top_future.result()
                 return pol, top, ""
             notice = _GEMINI_KEY_MISSING_NOTICE
         except Exception as e:  # import error, API error, timeout — degrade gracefully
@@ -1004,10 +1011,10 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 # condition. RSA always runs locally regardless of this choice.
                 if highlights and not study_mode:
                     backend_radio = gr.Radio(
-                        choices=["Local (private)", "Gemini (faster)"],
+                        choices=["Local (private)", "Gemini (cloud)"],
                         value="Local (private)",
                         label="Processing backend:",
-                        info="Gemini offloads polarity/topic to Google for speed on CPU hosting. RSA always stays local.",
+                        info="Gemini sends sentences to Google's API for polarity/topic — faster than local models on CPU-only hosting. Agreement (RSA) always runs locally.",
                         interactive=True,
                     )
                 else:

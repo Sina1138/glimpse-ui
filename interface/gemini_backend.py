@@ -19,8 +19,9 @@ No torch, no Gradio — pure API client.
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # Auto-load .env (gitignored, see .env.example) so GEMINI_API_KEY doesn't need to be
 # exported manually every session. Never overrides an already-exported env var.
@@ -66,6 +67,11 @@ _DEFAULT_MODEL = "gemini-2.5-flash"
 _TIMEOUT_MS = 20_000
 # Chunk size to keep any single structured-output response comfortably small.
 _MAX_BATCH = 80
+# Concurrent in-flight requests per task. Chunks are independent, so we fan them
+# out instead of paying one full round-trip per chunk. Kept modest to stay far
+# from rate limits (the demo dispatch may also run polarity+topic concurrently,
+# doubling the effective in-flight count).
+_MAX_CONCURRENCY = 4
 
 
 def _api_key() -> Optional[str]:
@@ -148,8 +154,8 @@ def _classify(sentences: List[str], enum_values: List[str], prompt: str) -> List
 
     labels: List[Optional[str]] = [None] * len(sentences)
 
-    for start in range(0, len(sentences), _MAX_BATCH):
-        chunk = sentences[start:start + _MAX_BATCH]
+    def _classify_chunk(job: Tuple[int, List[str]]) -> Tuple[int, int, List[dict]]:
+        start, chunk = job
         numbered = "\n".join(f"{i}: {s}" for i, s in enumerate(chunk))
         contents = f"{prompt}\n\nSentences:\n{numbered}"
         response = client.models.generate_content(
@@ -165,13 +171,21 @@ def _classify(sentences: List[str], enum_values: List[str], prompt: str) -> List
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
-        parsed = _parse_response(response)
-        valid = set(enum_values)
-        for entry in parsed:
-            idx = entry.get("index")
-            label = entry.get("label")
-            if isinstance(idx, int) and 0 <= idx < len(chunk) and label in valid:
-                labels[start + idx] = label
+        return start, len(chunk), _parse_response(response)
+
+    # Chunks are independent — classify them concurrently. executor.map re-raises
+    # the first chunk failure, so one bad chunk fails the whole call (the caller's
+    # fallback then stays all-or-nothing instead of mixing backends per chunk).
+    jobs = [(start, sentences[start:start + _MAX_BATCH])
+            for start in range(0, len(sentences), _MAX_BATCH)]
+    valid = set(enum_values)
+    with ThreadPoolExecutor(max_workers=min(_MAX_CONCURRENCY, len(jobs))) as ex:
+        for start, chunk_len, parsed in ex.map(_classify_chunk, jobs):
+            for entry in parsed:
+                idx = entry.get("index")
+                label = entry.get("label")
+                if isinstance(idx, int) and 0 <= idx < chunk_len and label in valid:
+                    labels[start + idx] = label
 
     return labels
 
