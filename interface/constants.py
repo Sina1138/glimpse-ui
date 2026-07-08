@@ -287,6 +287,42 @@ html, body, .gradio-container, main, .contain { scroll-behavior: smooth !importa
     align-items: center;
     color: #374151;
 }
+/* Align content placed outside a gr.Tabs panel with the padded tab content
+   above it. Gradio tab panels have padding: var(--block-padding), whose
+   default-theme horizontal component is calc(var(--spacing-xl) + 2px) —
+   --block-padding itself is a two-value shorthand, so it can't be reused
+   inside another padding shorthand here. */
+.tab-width-align {
+    padding: 0 calc(var(--spacing-xl) + 2px) !important;
+    box-sizing: border-box;
+}
+.prep-paper-abstract {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #ffffff;
+    box-sizing: border-box;
+    margin: 0;
+}
+.prep-paper-abstract summary {
+    cursor: pointer;
+    padding: 12px 18px;
+    font-weight: 700;
+    font-size: 0.98em;
+    color: #1f2937;
+    user-select: none;
+    list-style-position: inside;
+}
+.prep-paper-abstract summary:hover {
+    background: #f9fafb;
+    border-radius: 8px;
+}
+.prep-paper-abstract-body {
+    padding: 0 18px 14px 18px;
+    color: #374151;
+    line-height: 1.55;
+    font-size: 0.95em;
+    white-space: pre-line;
+}
 .ac-guide-link {
     display: inline-flex;
     align-items: center;

@@ -435,44 +435,68 @@ def fetch_reviews_from_openreview_link(link: str) -> Tuple[List[str], str, str, 
         if ac_guide_url:
             print(f"[FETCH]   ICLR AC guide inferred: {ac_guide_url}")
 
-        # Extract title from submission note
+        # Extract title: prefer the root note (id == forum, the actual
+        # submission). Invitation-pattern matching alone is unsafe on v2:
+        # every reply lives under a ".../SubmissionNNNN/-/..." path, so e.g.
+        # the Decision note ("Paper Decision") can match first.
         title = ""
-        submission_patterns = ['Blind_Submission', '/Submission', 'submission', 'paper']
         for note in forum_notes:
-            invitations = _get_invitations(note)
-            inv_lower = [inv.lower() for inv in invitations]
-            if any(p.lower() in inv for inv in inv_lower for p in submission_patterns):
-                content = getattr(note, 'content', {})
-                t = _get_field(content, 'title')
+            note_id = getattr(note, 'id', None)
+            note_forum = getattr(note, 'forum', None)
+            if note_id and note_forum and note_id == note_forum:
+                t = _get_field(getattr(note, 'content', {}), 'title')
                 if t:
                     title = t
-                    print(f"[FETCH]   Title: {title[:80]}")
-                break
+                    print(f"[FETCH]   Title (root note): {title[:80]}")
+                    break
         if not title:
-            # Fallback: find the note whose forum == id (the root submission note)
+            submission_patterns = ['Blind_Submission', '/Submission', 'submission', 'paper']
             all_invitations = []
             for note in forum_notes:
-                all_invitations.extend(_get_invitations(note))
-                note_id = getattr(note, 'id', None)
-                note_forum = getattr(note, 'forum', None)
-                if note_id and note_forum and note_id == note_forum:
-                    content = getattr(note, 'content', {})
-                    t = _get_field(content, 'title')
+                invitations = _get_invitations(note)
+                all_invitations.extend(invitations)
+                inv_lower = [inv.lower() for inv in invitations]
+                if any(p.lower() in inv for inv in inv_lower for p in submission_patterns):
+                    t = _get_field(getattr(note, 'content', {}), 'title')
                     if t:
                         title = t
-                        print(f"[FETCH]   Title (root note): {title[:80]}")
+                        print(f"[FETCH]   Title: {title[:80]}")
                         break
             if not title:
                 print(f"[FETCH]   No title found. Invitations seen: {all_invitations[:10]}")
 
-        # Extract reviews
+        # Extract reviews. Older venues (v1) have a single flat "review"
+        # field; modern venues (e.g. ICLR 2024+, v2) use structured fields.
+        # Assemble the structured ones as "Label:\n<text>" sections — the
+        # same format as the frozen study review files.
+        structured_review_fields = [
+            ('summary', 'Summary'),
+            ('strengths', 'Strengths'),
+            ('weaknesses', 'Weaknesses'),
+            ('questions', 'Questions'),
+            ('limitations', 'Limitations'),
+        ]
+
+        def _assemble_structured_review(content):
+            parts = []
+            for key, label in structured_review_fields:
+                val = _get_field(content, key)
+                if val and val.strip():
+                    parts.append(f"{label}:\n{val.strip()}")
+            return "\n\n".join(parts)
+
         reviews = []
         review_id_to_num = {}
         for note in forum_notes:
             invitations = _get_invitations(note)
+            # Meta_Review/Decision also contain "Review"/"paper" — not reviews.
+            if any(p in inv for inv in invitations for p in ['Meta_Review', 'Decision']):
+                continue
             if any(p in inv for inv in invitations for p in ['Official_Review', 'Review', 'review']):
                 content = getattr(note, 'content', {})
                 text = _get_field(content, 'review', 'Review', 'text', 'content')
+                if not (text and text.strip()):
+                    text = _assemble_structured_review(content)
                 if text and text.strip():
                     reviews.append(text.strip())
                     review_id_to_num[note.id] = len(reviews)
@@ -513,8 +537,32 @@ def fetch_reviews_from_openreview_link(link: str) -> Tuple[List[str], str, str, 
     }
 
     def _make_clients():
-        """Yield (label, client) pairs to try, with browser headers injected."""
-        # Clear stale env vars so openreview.Client doesn't auto-read them and try (bad) credentials
+        """Yield (label, client) pairs to try, with browser headers injected.
+
+        Authenticated v2 is tried first when credentials are available: some
+        hosts (e.g. the Mila cluster) are bot-challenged by OpenReview for
+        anonymous API access, and login bypasses the challenge. Guest clients
+        remain as fallback so a bad password never breaks fetching outright.
+        """
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        except ImportError:
+            pass
+        username = (os.environ.get('OPENREVIEW_USERNAME') or '').strip()
+        password = (os.environ.get('OPENREVIEW_PASSWORD') or '').strip()
+        if username and password:
+            try:
+                client = openreview.api.OpenReviewClient(
+                    baseurl='https://api2.openreview.net',
+                    username=username, password=password)
+                client.headers.update(_browser_headers)
+                yield "v2 authenticated", client
+            except Exception as e:
+                print(f"[FETCH] v2 authenticated client init failed "
+                      f"({type(e).__name__}: {e}); falling back to guest")
+        # Clear env vars for the guest attempts so openreview.Client doesn't
+        # auto-read them and re-try the same (possibly bad) credentials.
         _saved = {k: os.environ.pop(k) for k in ('OPENREVIEW_USERNAME', 'OPENREVIEW_PASSWORD') if k in os.environ}
         try:
             for label, baseurl, cls in [

@@ -54,6 +54,11 @@ from interface.interaction_logger import InteractionLogger, JS_EVENT_BRIDGE
 # Module-level storage for background thread state (avoids pickling issues with ZeroGPU)
 _thread_states: Dict = {}
 
+# Mirror of the in-progress study task, for the tab-close (`demo.unload`) handler,
+# which cannot read the per-session gr.State. One study build == one participant
+# at a time, so a single module-level record is sufficient.
+_active_study_task: Dict = {}
+
 
 # ---------------------------------------------------------------------------
 # Dataset loading (shared across all conditions)
@@ -106,17 +111,25 @@ def load_scored_reviews_with_rebuttals(csv_path: Path = None):
     return years, df
 
 
-def _load_paper_titles() -> dict:
-    titles = {}
+def _load_paper_info() -> Tuple[dict, dict]:
+    """Load paper titles and abstracts from the raw data CSVs, keyed by id."""
+    titles, abstracts = {}, {}
     for csv in sorted((BASE_DIR / "data").glob("all_reviews_*.csv")):
         try:
-            df_raw = pd.read_csv(csv, usecols=["id", "paper_title"])
+            header = pd.read_csv(csv, nrows=0).columns
+            cols = [c for c in ("id", "paper_title", "abstract") if c in header]
+            if "id" not in cols:
+                continue
+            df_raw = pd.read_csv(csv, usecols=cols)
             for _, row in df_raw.iterrows():
-                if row["id"] not in titles and pd.notna(row.get("paper_title", "")):
-                    titles[row["id"]] = str(row["paper_title"])
+                rid = row["id"]
+                if "paper_title" in cols and rid not in titles and pd.notna(row["paper_title"]):
+                    titles[rid] = str(row["paper_title"])
+                if "abstract" in cols and rid not in abstracts and pd.notna(row["abstract"]):
+                    abstracts[rid] = str(row["abstract"])
         except Exception:
             pass
-    return titles
+    return titles, abstracts
 
 
 # Load demo dataset once at module level. Study builds override this in
@@ -124,7 +137,7 @@ def _load_paper_titles() -> dict:
 # error once the config is resolved (checked in build_review_app).
 _years_new, _df_new = load_scored_reviews_with_rebuttals()
 years, all_scored_reviews_df = _years_new, _df_new
-_paper_titles = _load_paper_titles()
+_paper_titles, _paper_abstracts = _load_paper_info()
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +310,23 @@ def _render_preprocessed_summary(current_id: str, paper_title: str, current_inde
         f'<span>({submission_count})</span>'
         '</div>'
         '</div>'
+    )
+
+
+def _render_paper_abstract(abstract: str) -> str:
+    """Render the collapsible paper abstract shown above the reviews.
+
+    The <summary> carries data-log-event so expand/collapse clicks reach the
+    JS event bridge in study builds (logged as 'abstract_toggle').
+    """
+    text = (abstract or "").strip()
+    if not text:
+        return ""
+    return (
+        '<details class="prep-paper-abstract" open>'
+        '<summary data-log-event="abstract_toggle">Abstract</summary>'
+        f'<div class="prep-paper-abstract-body">{_html.escape(text)}</div>'
+        '</details>'
     )
 
 
@@ -481,6 +511,11 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
         }
         setInterval(updateStudyElapsed, 1000);
         updateStudyElapsed();
+        window.addEventListener('beforeunload', function (e) {
+            var gate = document.querySelector('#study-gate');
+            var taskActive = gate && (gate.offsetParent === null); // gate hidden => task running
+            if (taskActive) { e.preventDefault(); e.returnValue = ''; }
+        });
 """
 
     # JS event bridge for logging HTML-only controls
@@ -566,12 +601,15 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     color_map = {}
 
                 current_id = review_ids[current_index]
-                paper_title = _paper_titles.get(current_id, "")
-                if not paper_title:
-                    paper_meta = state.get("metadata_for_year", {}).get(current_id, {})
-                    paper_title = paper_meta.get("paper_title", "") if isinstance(paper_meta, dict) else ""
+                paper_meta = state.get("metadata_for_year", {}).get(current_id, {})
+                if not isinstance(paper_meta, dict):
+                    paper_meta = {}
+                paper_title = _paper_titles.get(current_id, "") or paper_meta.get("paper_title", "")
                 paper_summary_html = _render_preprocessed_summary(
                     current_id, paper_title, current_index, len(state["review_ids"])
+                )
+                paper_abstract_html = _render_paper_abstract(
+                    _paper_abstracts.get(current_id, "") or paper_meta.get("abstract", "")
                 )
                 # AC guide year: prefer per-submission metadata (study datasets
                 # key rows by task label, not year), fall back to the row key.
@@ -744,6 +782,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 return (
                     paper_summary_html,
                     prep_ac_guide_html,
+                    paper_abstract_html,
                     *review_updates,
                     *agreement_updates,
                     opinions_row_visibility,
@@ -788,9 +827,12 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                             interactive=False
                         )
 
+            # Paper abstract: full width, above the reviews (as on OpenReview).
+            prep_abstract = gr.HTML(value=init_display[2], container=False, padding=False)
+
             with gr.Row(visible=False) as prep_opinions_row:
-                most_common_sentences = gr.HTML(visible=False, value="", label="Most Common Opinions")
-                most_unique_sentences = gr.HTML(visible=False, value="", label="Most Divergent Opinions")
+                most_common_sentences = gr.HTML(visible=False, value="", label="Most Common Opinions", padding=False)
+                most_unique_sentences = gr.HTML(visible=False, value="", label="Most Divergent Opinions", padding=False)
 
             topic_text_box = gr.HTML(visible=False, value="", container=False, padding=False)
             prep_reviews = []
@@ -799,9 +841,11 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
             for _i in range(MAX_PREPROCESSED_REVIEWS):
                 gr.HTML(value=f'<div id="pre-review-anchor-{_i+1}"></div>', elem_classes=["review-anchor"])
                 prep_reviews.append(gr.HighlightedText(show_legend=False, label=f"📝 Review {_i+1}", visible=number_of_displayed_reviews >= _i+1, key=f"initial_review{_i+1}"))
-                prep_agreements.append(gr.HTML(visible=False, value=""))
-                prep_rebuttals.append(gr.HTML(visible=False, value=""))
-            prep_general_rebuttal = gr.HTML(visible=False, value="")
+                # padding=False: align the review cards with the abstract /
+                # paper-summary blocks (default gr.HTML padding insets them).
+                prep_agreements.append(gr.HTML(visible=False, value="", padding=False))
+                prep_rebuttals.append(gr.HTML(visible=False, value="", padding=False))
+            prep_general_rebuttal = gr.HTML(visible=False, value="", padding=False)
             prep_toggle_bar = gr.HTML(
                 visible=False,
                 value="",
@@ -837,7 +881,7 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                            paper_id=st["review_ids"][st["current_review_index"]])
                 return update_review_display(st, st_type)
 
-            _review_outputs = [review_id, prep_ac_guide, *prep_reviews, *prep_agreements, prep_opinions_row, most_common_sentences, most_unique_sentences, topic_text_box, prep_toggle_bar, *prep_rebuttals, prep_general_rebuttal, state]
+            _review_outputs = [review_id, prep_ac_guide, prep_abstract, *prep_reviews, *prep_agreements, prep_opinions_row, most_common_sentences, most_unique_sentences, topic_text_box, prep_toggle_bar, *prep_rebuttals, prep_general_rebuttal, state]
             year.change(fn=year_change, inputs=[year, state, score_type], outputs=_review_outputs)
 
             if highlights:
@@ -877,6 +921,18 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                     study_end_btn = gr.Button("End Task", variant="stop")
 
             # --- Study session gate wiring (study builds only) ---
+            def _emit_task_end(paper_id, task, start_time, source, reason=""):
+                elapsed_seconds = int(max(0, time.time() - start_time)) if start_time else 0
+                payload = {
+                    "task": task,
+                    "elapsed_seconds": elapsed_seconds,
+                    "elapsed_display": _format_elapsed_seconds(elapsed_seconds),
+                }
+                if reason:
+                    payload["reason"] = reason
+                logger.log("task_end", tab="pre", source=source,
+                           paper_id=paper_id, payload=payload)
+
             def _study_start(pid, task, st, st_type):
                 pid = (pid or "").strip()
                 if not pid or not task:
@@ -899,6 +955,13 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 st["current_review"] = st["scored_reviews_for_year"][st["review_ids"][0]]
                 st["study_participant_id"] = pid
                 st["study_task_start_time"] = start_time
+                _active_study_task.clear()
+                _active_study_task.update({
+                    "start_time": start_time,
+                    "paper_id": st["review_ids"][0],
+                    "task": task,
+                    "participant_id": pid,
+                })
                 logger.log("task_start", tab="pre", source="moderator",
                            paper_id=st["review_ids"][0],
                            payload={"task": task, "participant_id": pid})
@@ -928,16 +991,11 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 if st.get("review_ids"):
                     current_paper = st["review_ids"][st.get("current_review_index", 0)]
                 start_time = st.get("study_task_start_time")
-                elapsed_seconds = int(max(0, time.time() - start_time)) if start_time else 0
-                logger.log("task_end", tab="pre", source="moderator",
-                           paper_id=current_paper,
-                           payload={
-                               "task": st.get("year_choice", ""),
-                               "elapsed_seconds": elapsed_seconds,
-                               "elapsed_display": _format_elapsed_seconds(elapsed_seconds),
-                           })
+                _emit_task_end(current_paper, st.get("year_choice", ""),
+                               start_time, source="moderator")
                 st["study_task_start_time"] = None
                 st["study_participant_id"] = ""
+                _active_study_task.clear()
                 task_html = (
                     '<div class="study-settings-block">'
                     '<div class="study-settings-label">Active Task</div>'
@@ -958,6 +1016,19 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 inputs=[state],
                 outputs=[study_gate, study_task_label, study_elapsed_time, gate_status, gate_task, state],
             )
+
+            # --- Tab close/refresh during an active task: log it as an interrupted task_end ---
+            if config.logging_enabled:
+                def _on_unload():
+                    task = _active_study_task
+                    if task:
+                        _emit_task_end(
+                            task.get("paper_id", ""), task.get("task", ""),
+                            task.get("start_time"), source="system", reason="unload",
+                        )
+                        _active_study_task.clear()
+
+                demo.unload(_on_unload)
 
         # ==============================================================
         # INTERACTIVE TAB
@@ -1009,21 +1080,24 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 # Processing-backend toggle: public demo only. Hidden + locked to Local
                 # in study mode (experimental control) and absent from the no-highlight
                 # condition. RSA always runs locally regardless of this choice.
-                if highlights and not study_mode:
-                    backend_radio = gr.Radio(
-                        choices=["Local (private)", "Gemini (cloud)"],
-                        value="Local (private)",
-                        label="Processing backend:",
-                        info="Gemini sends sentences to Google's API for polarity/topic — faster than local models on CPU-only hosting. Agreement (RSA) always runs locally.",
-                        interactive=True,
-                    )
-                else:
-                    backend_radio = gr.Radio(
-                        choices=["Local (private)"],
-                        value="Local (private)",
-                        visible=False,
-                        interactive=False,
-                    )
+                # Wrapped in a padded column so its width matches the tab content
+                # above (Gradio tab panels have padding: var(--block-padding)).
+                with gr.Column(elem_classes=["tab-width-align"]):
+                    if highlights and not study_mode:
+                        backend_radio = gr.Radio(
+                            choices=["Local (private)", "Gemini (cloud)"],
+                            value="Local (private)",
+                            label="Processing backend:",
+                            info="Gemini sends sentences to Google's API for polarity/topic — faster than local models on CPU-only hosting. Agreement (RSA) always runs locally.",
+                            interactive=True,
+                        )
+                    else:
+                        backend_radio = gr.Radio(
+                            choices=["Local (private)"],
+                            value="Local (private)",
+                            visible=False,
+                            interactive=False,
+                        )
 
                 status_html = gr.HTML("", visible=False)
 

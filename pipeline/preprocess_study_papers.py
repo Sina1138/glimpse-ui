@@ -13,7 +13,9 @@ Input layout (one directory per task):
     study/papers_raw/
         Practice/
             meta.json        {"forum_url": "https://openreview.net/forum?id=...",
-                              "paper_title": "...", "iclr_year": 2025}
+                              "paper_title": "...", "iclr_year": 2025,
+                              "abstract": "..."}  # abstract optional but
+                                                  # expected (shown in the UI)
             review_1.txt     frozen review texts, one file per review,
             review_2.txt     in reviewer order (R1, R2, ...)
             ...
@@ -64,6 +66,9 @@ def _read_task_inputs(task_dir: Path):
     for key in ("forum_url", "paper_title", "iclr_year"):
         if key not in meta:
             raise ValueError(f"{task_dir / 'meta.json'} is missing required key: {key}")
+    if not str(meta.get("abstract", "")).strip():
+        print(f"[STUDY] WARNING: {task_dir / 'meta.json'} has no 'abstract' — "
+              "the UI will show the reviews without one.")
     review_files = sorted(task_dir.glob("review_*.txt"))
     texts = []
     for f in review_files:
@@ -100,8 +105,8 @@ def _score_task(processor, task_label: str, meta: dict, texts: list,
     Mirrors the demo pipeline's schema exactly:
       scored_dict[forum_url] = [per review: {"sentences": {sent: {consensuality,
           polarity (0/1/2), topic}}, "rebuttal": ""}]
-      metadata[forum_url] = {rebuttal, paper_title, has_rebuttal, iclr_year,
-          rsa: {listener, speaker}}
+      metadata[forum_url] = {rebuttal, paper_title, abstract, has_rebuttal,
+          iclr_year, rsa: {listener, speaker}}
     Consensuality values are stored RAW (the pre-processed tab median/IQR
     normalizes at render time, same as the demo dataset).
     """
@@ -177,6 +182,7 @@ def _score_task(processor, task_label: str, meta: dict, texts: list,
             forum_url: {
                 "rebuttal": "",
                 "paper_title": meta["paper_title"],
+                "abstract": str(meta.get("abstract", "")).strip(),
                 "has_rebuttal": False,
                 "iclr_year": meta["iclr_year"],
                 "rsa": {"listener": listener, "speaker": speaker},
