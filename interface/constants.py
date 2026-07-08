@@ -287,15 +287,6 @@ html, body, .gradio-container, main, .contain { scroll-behavior: smooth !importa
     align-items: center;
     color: #374151;
 }
-/* Align content placed outside a gr.Tabs panel with the padded tab content
-   above it. Gradio tab panels have padding: var(--block-padding), whose
-   default-theme horizontal component is calc(var(--spacing-xl) + 2px) —
-   --block-padding itself is a two-value shorthand, so it can't be reused
-   inside another padding shorthand here. */
-.tab-width-align {
-    padding: 0 calc(var(--spacing-xl) + 2px) !important;
-    box-sizing: border-box;
-}
 .prep-paper-abstract {
     border: 1px solid #d1d5db;
     border-radius: 8px;

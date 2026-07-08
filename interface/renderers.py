@@ -598,8 +598,11 @@ def format_divergent_cards(
                 dom_pct = int(round(max(listener[sent].values(), default=0.0) * 100))
             uniqueness_badge = (
                 f'<span style="background:#fee2e2;color:#991b1b;padding:2px 6px;'
-                f'border-radius:4px;font-size:0.7em;font-weight:600;display:inline-block;">'
-                f'{dom_pct}% listener share</span>'
+                f'border-radius:4px;font-size:0.7em;font-weight:600;display:inline-block;" '
+                f'title="How strongly this point is tied to this one review: seeing only '
+                f'this sentence, the model would attribute it to this review with '
+                f'{dom_pct}% confidence.">'
+                f'{dom_pct}% specific to this review</span>'
             )
 
             chips = [uniqueness_badge]

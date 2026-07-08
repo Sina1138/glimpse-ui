@@ -1053,11 +1053,33 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                         **Example link:**
                         https://openreview.net/forum?id=...
                         """)
-                        openreview_link_input = gr.Textbox(
-                            label="OpenReview Forum Link",
-                            placeholder="https://openreview.net/forum?id=...",
-                            interactive=True
-                        )
+                        # Processing-backend toggle: public demo only. Hidden + locked to
+                        # Local in study mode (experimental control) and in the no-highlight
+                        # condition. RSA always runs locally regardless of this choice.
+                        with gr.Row():
+                            if highlights and not study_mode:
+                                backend_radio_link = gr.Radio(
+                                    choices=["Local (private)", "Gemini (cloud)"],
+                                    value="Local (private)",
+                                    label="Processing backend:",
+                                    info="Gemini sends sentences to Google's API for polarity/topic — faster than local models on CPU-only hosting. Agreement (RSA) always runs locally.",
+                                    interactive=True,
+                                    scale=1,
+                                )
+                            else:
+                                backend_radio_link = gr.Radio(
+                                    choices=["Local (private)"],
+                                    value="Local (private)",
+                                    visible=False,
+                                    interactive=False,
+                                    scale=1,
+                                )
+                            openreview_link_input = gr.Textbox(
+                                label="OpenReview Forum Link",
+                                placeholder="https://openreview.net/forum?id=...",
+                                interactive=True,
+                                scale=1,
+                            )
                         fetch_reviews_button = gr.Button("Fetch & Process", variant="primary", interactive=True)
                         openreview_title = gr.State("")
                         openreview_rebuttal = gr.State("")
@@ -1072,32 +1094,28 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                         review6_textbox = gr.Textbox(lines=5, value="", label="📝 Review 6", interactive=True, visible=False)
                         paste_rebuttal = gr.Textbox(label="💬 Author Rebuttal (optional)", interactive=True, lines=3, placeholder="Paste the author rebuttal here (optional)...")
                         interactive_review_count = gr.State(3)
+                        # Processing-backend toggle: public demo only. Hidden + locked to
+                        # Local in study mode (experimental control) and in the no-highlight
+                        # condition. RSA always runs locally regardless of this choice.
+                        if highlights and not study_mode:
+                            backend_radio_paste = gr.Radio(
+                                choices=["Local (private)", "Gemini (cloud)"],
+                                value="Local (private)",
+                                label="Processing backend:",
+                                info="Gemini sends sentences to Google's API for polarity/topic — faster than local models on CPU-only hosting. Agreement (RSA) always runs locally.",
+                                interactive=True,
+                            )
+                        else:
+                            backend_radio_paste = gr.Radio(
+                                choices=["Local (private)"],
+                                value="Local (private)",
+                                visible=False,
+                                interactive=False,
+                            )
                         with gr.Row():
                             add_review_btn = gr.Button("➕ Add Review", variant="secondary", interactive=True)
                             submit_button = gr.Button("Process", variant="primary", interactive=True)
                             clear_button = gr.Button("Clear", variant="secondary", interactive=True)
-
-                # Processing-backend toggle: public demo only. Hidden + locked to Local
-                # in study mode (experimental control) and absent from the no-highlight
-                # condition. RSA always runs locally regardless of this choice.
-                # Wrapped in a padded column so its width matches the tab content
-                # above (Gradio tab panels have padding: var(--block-padding)).
-                with gr.Column(elem_classes=["tab-width-align"]):
-                    if highlights and not study_mode:
-                        backend_radio = gr.Radio(
-                            choices=["Local (private)", "Gemini (cloud)"],
-                            value="Local (private)",
-                            label="Processing backend:",
-                            info="Gemini sends sentences to Google's API for polarity/topic — faster than local models on CPU-only hosting. Agreement (RSA) always runs locally.",
-                            interactive=True,
-                        )
-                    else:
-                        backend_radio = gr.Radio(
-                            choices=["Local (private)"],
-                            value="Local (private)",
-                            visible=False,
-                            interactive=False,
-                        )
 
                 status_html = gr.HTML("", visible=False)
 
@@ -1171,7 +1189,9 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
             processing_thread_state = gr.State(None)
             no_ac_guide_state = gr.State("")
 
-            _interactive_inputs = [review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox, focus_radio, interactive_rebuttal_state, processing_thread_state, backend_radio]
+            _interactive_inputs_base = [review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox, focus_radio, interactive_rebuttal_state, processing_thread_state]
+            _interactive_inputs_link = [*_interactive_inputs_base, backend_radio_link]
+            _interactive_inputs_paste = [*_interactive_inputs_base, backend_radio_paste]
 
             rsa_computation_state = gr.State({})
 
@@ -1671,11 +1691,11 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 ).success(
                     fn=_show_raw_and_switch,
                     inputs=[review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                            openreview_rebuttal, openreview_title, openreview_ac_guide_url, backend_radio],
+                            openreview_rebuttal, openreview_title, openreview_ac_guide_url, backend_radio_link],
                     outputs=_show_raw_outputs
                 ).success(
                     fn=process_interactive_reviews_fast,
-                    inputs=_interactive_inputs,
+                    inputs=_interactive_inputs_link,
                     outputs=_interactive_outputs
                 ).success(
                     fn=lambda: (
@@ -1710,11 +1730,11 @@ def build_review_app(config: StudyConfig) -> gr.Blocks:
                 ).success(
                     fn=_show_raw_and_switch,
                     inputs=[review1_textbox, review2_textbox, review3_textbox, review4_textbox, review5_textbox, review6_textbox,
-                            paste_rebuttal, no_title_state, no_ac_guide_state, backend_radio],
+                            paste_rebuttal, no_title_state, no_ac_guide_state, backend_radio_paste],
                     outputs=_show_raw_outputs
                 ).success(
                     fn=process_interactive_reviews_fast,
-                    inputs=_interactive_inputs,
+                    inputs=_interactive_inputs_paste,
                     outputs=_interactive_outputs
                 ).success(
                     fn=lambda: (
